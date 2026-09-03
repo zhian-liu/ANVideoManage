@@ -5,6 +5,7 @@ __pycache__/
 venv/
 backend/data/
 backend/.env
+release/
 # ZLMediaKit is an external checkout; install/download it separately.
 backend/ZLMediaKit/
 

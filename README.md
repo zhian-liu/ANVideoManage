@@ -66,6 +66,20 @@ npm run dev
 
 浏览器打开 http://localhost:5173 ，使用 `admin / admin123` 登录。
 
+### 4. Windows 打包
+
+在项目根目录双击 `packaging/package_windows.bat`，或执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\packaging\package_windows.ps1
+```
+
+脚本会自动构建前端，并在 `release/VideoManage` 生成可运行目录及
+`release/VideoManage.zip`。包内包含后端、前端静态文件、ZLMediaKit 和
+`start_windows.bat` 启动入口；目标机器需要 Python 3.11+，首次启动会自动创建
+虚拟环境并安装后端依赖。若希望把当前后端虚拟环境一并复制进包，可追加
+`-IncludeBackendVenv` 参数。
+
 ## 使用说明
 
 1. **添加设备**：进入「设备管理」→「添加设备」，填写名称，选择接入方式：

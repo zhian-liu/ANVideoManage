@@ -1,4 +1,11 @@
-import { AppstoreOutlined, BorderOutlined, ReloadOutlined } from '@ant-design/icons';
+import {
+  AppstoreOutlined,
+  BorderOutlined,
+  CloseOutlined,
+  PauseOutlined,
+  PlayCircleOutlined,
+  ReloadOutlined,
+} from '@ant-design/icons';
 import { Button, Card, Empty, Modal, Tree } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import { useCallback, useEffect, useState } from 'react';
@@ -18,7 +25,10 @@ export default function Live() {
   const [selected, setSelected] = useState<Device | null>(null);
   const [loading, setLoading] = useState(false);
   const [layout, setLayout] = useState<LayoutType>(4);
-  const [selectedDeviceIds, setSelectedDeviceIds] = useState<number[]>([]);
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState<Array<number | null>>([]);
+  const [selectedWindow, setSelectedWindow] = useState(0);
+  const [selectedTreeDeviceId, setSelectedTreeDeviceId] = useState<number | null>(null);
+  const [pausedWindows, setPausedWindows] = useState<Record<number, boolean>>({});
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -55,10 +65,52 @@ export default function Live() {
     ),
   }));
 
-  // 处理设备选择
+  // 将设备放入当前选中的视频窗口。
+  const assignDeviceToWindow = (id: number) => {
+    setSelectedTreeDeviceId(id);
+    setSelectedDeviceIds((prev) => {
+      const next = [...prev];
+      next[selectedWindow] = id;
+      return next;
+    });
+    setPausedWindows((prev) => {
+      if (!prev[selectedWindow]) return prev;
+      const next = { ...prev };
+      delete next[selectedWindow];
+      return next;
+    });
+  };
+
   const onDeviceSelect = (selectedKeys: React.Key[]) => {
-    const ids = selectedKeys.map((k) => parseInt(k.toString())).filter((id) => !isNaN(id));
-    setSelectedDeviceIds(ids.slice(0, layout));
+    const id = Number(selectedKeys[0]);
+    if (Number.isInteger(id)) assignDeviceToWindow(id);
+  };
+
+  const onDeviceClick = (_event: unknown, node: DataNode) => {
+    const id = Number(node.key);
+    if (Number.isInteger(id)) assignDeviceToWindow(id);
+  };
+
+  const closeWindow = (windowIndex: number) => {
+    setSelectedDeviceIds((prev) => {
+      if (prev[windowIndex] == null) return prev;
+      const next = [...prev];
+      next[windowIndex] = null;
+      return next;
+    });
+    setPausedWindows((prev) => {
+      if (!prev[windowIndex]) return prev;
+      const next = { ...prev };
+      delete next[windowIndex];
+      return next;
+    });
+  };
+
+  const toggleWindowPause = (windowIndex: number) => {
+    setPausedWindows((prev) => ({
+      ...prev,
+      [windowIndex]: !prev[windowIndex],
+    }));
   };
 
   // 处理双击设备 - 打开详情弹窗
@@ -89,9 +141,11 @@ export default function Live() {
     const cells: JSX.Element[] = [];
 
     for (let i = 0; i < layout; i++) {
-      const deviceId = selectedDeviceIds[i];
+      const deviceId = selectedDeviceIds[i] ?? null;
       const device = deviceId ? devices.find((d) => d.id === deviceId) : null;
       const info = device ? streams[device.id] : null;
+      const isSelected = selectedWindow === i;
+      const isPaused = Boolean(pausedWindows[i]);
 
       cells.push(
         <div
@@ -101,13 +155,24 @@ export default function Live() {
             position: 'relative',
             aspectRatio: '16 / 9',
             background: theme.bg.base,
-            border: `2px solid ${theme.border.default}`,
+            border: `2px solid ${isSelected ? theme.primary.main : theme.border.default}`,
             borderRadius: 8,
             overflow: 'hidden',
-            cursor: device ? 'pointer' : 'default',
+            cursor: 'pointer',
             transition: 'all 0.3s',
+            boxShadow: isSelected ? `0 0 0 2px ${theme.primary.dim}` : 'none',
           }}
-          onClick={() => device && onDeviceDoubleClick(device.id)}
+          aria-label={`窗口 ${i + 1}${device ? `：${device.name}` : ''}`}
+          role="button"
+          tabIndex={0}
+          onClick={() => setSelectedWindow(i)}
+          onDoubleClick={() => device && onDeviceDoubleClick(device.id)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              setSelectedWindow(i);
+            }
+          }}
           onMouseEnter={(e) => {
             if (device) {
               e.currentTarget.style.transform = 'scale(1.02)';
@@ -117,13 +182,79 @@ export default function Live() {
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.transform = 'scale(1)';
-            e.currentTarget.style.borderColor = theme.border.default;
-            e.currentTarget.style.boxShadow = 'none';
+            e.currentTarget.style.borderColor = isSelected
+              ? theme.primary.main
+              : theme.border.default;
+            e.currentTarget.style.boxShadow = isSelected
+              ? `0 0 0 2px ${theme.primary.dim}`
+              : 'none';
           }}
         >
+          {deviceId !== null && (
+            <>
+              <Button
+                type="text"
+                icon={isPaused ? <PlayCircleOutlined /> : <PauseOutlined />}
+                aria-label={isPaused ? `继续窗口 ${i + 1}` : `暂停窗口 ${i + 1}`}
+                aria-pressed={isPaused}
+                title={isPaused ? '继续播放' : '暂停播放'}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleWindowPause(i);
+                }}
+                onDoubleClick={(event) => event.stopPropagation()}
+                style={{
+                  position: 'absolute',
+                  bottom: 8,
+                  left: 8,
+                  zIndex: 3,
+                  width: 30,
+                  height: 30,
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  background: 'rgba(0, 0, 0, 0.45)',
+                  borderRadius: 6,
+                }}
+              />
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 8,
+                  right: 8,
+                  zIndex: 3,
+                }}
+                onDoubleClick={(event) => event.stopPropagation()}
+              >
+                <Button
+                  type="text"
+                  icon={<CloseOutlined />}
+                  aria-label={`关闭窗口 ${i + 1}`}
+                  title="关闭视频"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    closeWindow(i);
+                  }}
+                  style={{
+                    width: 30,
+                    height: 30,
+                    padding: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                    background: 'rgba(0, 0, 0, 0.45)',
+                    borderRadius: 6,
+                  }}
+                />
+              </div>
+            </>
+          )}
           {device && info?.online ? (
             <>
-              <VideoPlayer url={info.flv_url} live muted />
+              <VideoPlayer url={info.flv_url} live muted paused={isPaused} />
               <div
                 style={{
                   position: 'absolute',
@@ -135,7 +266,7 @@ export default function Live() {
                   fontSize: 13,
                   fontWeight: 600,
                   color: '#fff',
-                  background: 'rgba(0,0,0,0.7)',
+                  background: 'rgba(0,0,0,0.45)',
                   backdropFilter: 'blur(4px)',
                 }}
               >
@@ -225,7 +356,8 @@ export default function Live() {
             showIcon
             treeData={treeData}
             onSelect={onDeviceSelect}
-            selectedKeys={selectedDeviceIds.map((id) => id.toString())}
+            onClick={onDeviceClick}
+            selectedKeys={selectedTreeDeviceId ? [selectedTreeDeviceId.toString()] : []}
             style={{
               background: 'transparent',
               color: theme.text.primary,
@@ -272,7 +404,7 @@ export default function Live() {
               icon={<BorderOutlined />}
               onClick={() => {
                 setLayout(1);
-                setSelectedDeviceIds((prev) => prev.slice(0, 1));
+                setSelectedWindow((prev) => Math.min(prev, 0));
               }}
               style={{
                 background: layout === 1 ? theme.primary.main : theme.bg.elevated,
@@ -286,7 +418,7 @@ export default function Live() {
               icon={<AppstoreOutlined />}
               onClick={() => {
                 setLayout(4);
-                setSelectedDeviceIds((prev) => prev.slice(0, 4));
+                setSelectedWindow((prev) => Math.min(prev, 3));
               }}
               style={{
                 background: layout === 4 ? theme.primary.main : theme.bg.elevated,
@@ -300,7 +432,7 @@ export default function Live() {
               icon={<AppstoreOutlined />}
               onClick={() => {
                 setLayout(9);
-                setSelectedDeviceIds((prev) => prev.slice(0, 9));
+                setSelectedWindow((prev) => Math.min(prev, 8));
               }}
               style={{
                 background: layout === 9 ? theme.primary.main : theme.bg.elevated,
@@ -314,7 +446,7 @@ export default function Live() {
               icon={<AppstoreOutlined />}
               onClick={() => {
                 setLayout(16);
-                setSelectedDeviceIds((prev) => prev.slice(0, 16));
+                setSelectedWindow((prev) => Math.min(prev, 15));
               }}
               style={{
                 background: layout === 16 ? theme.primary.main : theme.bg.elevated,

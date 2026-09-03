@@ -6,6 +6,7 @@ interface VideoPlayerProps {
   url: string;
   live?: boolean;
   muted?: boolean;
+  paused?: boolean;
   onError?: () => void;
 }
 
@@ -13,6 +14,7 @@ export default function VideoPlayer({
   url,
   live = true,
   muted = true,
+  paused = false,
   onError,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -24,6 +26,7 @@ export default function VideoPlayer({
     if (!live) {
       el.src = url;
       el.load();
+      if (paused) el.pause();
       return;
     }
 
@@ -39,7 +42,7 @@ export default function VideoPlayer({
     });
     player.attachMediaElement(el);
     player.load();
-    player.play().catch(() => onError?.());
+    if (!paused) player.play().catch(() => onError?.());
 
     return () => {
       try {
@@ -51,6 +54,18 @@ export default function VideoPlayer({
       }
     };
   }, [url, live, onError]);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+
+    if (paused) {
+      el.pause();
+      return;
+    }
+
+    el.play().catch(() => onError?.());
+  }, [paused, onError]);
 
   return (
     <video
