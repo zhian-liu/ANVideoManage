@@ -451,7 +451,8 @@ export default function Live() {
           {device && info?.online ? (
             <>
               <VideoPlayer
-                url={info.flv_url}
+                url={info.ts_url || info.flv_url}
+                fallbackUrl={info.ts_url ? info.flv_url : undefined}
                 live
                 muted
                 paused={isPaused}
@@ -688,7 +689,10 @@ export default function Live() {
               >
                 {streams[selected.id]?.online ? (
                     <VideoPlayer
-                      url={streams[selected.id].flv_url}
+                      url={streams[selected.id].ts_url || streams[selected.id].flv_url}
+                      fallbackUrl={
+                        streams[selected.id].ts_url ? streams[selected.id].flv_url : undefined
+                      }
                       live
                       muted={false}
                       videoKey="details"

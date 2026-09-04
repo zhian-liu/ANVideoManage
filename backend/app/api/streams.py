@@ -8,7 +8,7 @@ from app.core.deps import get_current_user
 from app.database import get_db
 from app.models import Device
 from app.services.stream_sync import apply_stream
-from app.services.zlmediakit import flv_url, hls_url, stream_key, zlm
+from app.services.zlmediakit import flv_url, hls_url, stream_key, ts_url, zlm
 
 router = APIRouter(
     prefix="/api/streams",
@@ -38,6 +38,7 @@ async def stream_info(device_id: int, db: AsyncSession = Depends(get_db)):
         "device_id": device.id,
         "online": online,
         "recording": recording,
+        "ts_url": ts_url(device.id),
         "flv_url": flv_url(device.id),
         "hls_url": hls_url(device.id),
     }

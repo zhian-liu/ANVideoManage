@@ -7,7 +7,7 @@
 | 层 | 技术 |
 |----|------|
 | 后端 | Python 3.11+ · FastAPI · SQLAlchemy(async) · SQLite |
-| 前端 | React 18 · TypeScript · Vite · Ant Design 5 |
+| 前端 | React 18 · TypeScript · Vite · Ant Design 5 · mpegts.js |
 | 流媒体 | ZLMediaKit（拉流 / 转码 / MP4 录像） |
 | 摄像机接入 | RTSP/ONVIF（已实现）+ 厂商云 API / 私有 SDK（预留适配器） |
 
@@ -16,7 +16,7 @@
 ```
 浏览器(React) ──HTTP REST──▶ FastAPI ──REST API──▶ ZLMediaKit ──RTSP拉流──▶ 摄像机
       │                          │                        │
-      └──HTTP-FLV/HLS────────────┘                        └──MP4录像 + WebHook回调──▶ 录像索引
+      └──HTTP-TS/HTTP-FLV/HLS────┘                        └──MP4录像 + WebHook回调──▶ 录像索引
 ```
 
 ## 目录结构
@@ -89,8 +89,11 @@ powershell -ExecutionPolicy Bypass -File .\packaging\package_windows.ps1
 
 ## 关键说明
 
-- **流地址**：后端把摄像机流以 `device_{id}` 为 stream 名交给 ZLMediaKit 拉流，前端通过
-  `http://<ZLM主机>:8080/live/device_{id}.live.flv`（HTTP-FLV）播放。
+- **流地址**：后端把摄像机流以 `device_{id}` 为 stream 名交给 ZLMediaKit 拉流，前端优先通过
+  `http://<ZLM主机>:8080/live/device_{id}.live.ts`（HTTP-MPEG-TS）由 `mpegts.js` 播放，
+  TS 请求失败时自动回退到 HTTP-FLV。
+- **H.265 浏览器限制**：`mpegts.js` 负责 TS 解封装和 MSE 写入，H.265 解码仍由浏览器/Windows
+  HEVC 组件提供。未安装 HEVC 扩展或硬件/系统不支持时，当前版本不会进行 FFmpeg 转码，页面无法播放该 H.265 流。
 - **录像**：ZLMediaKit 按 `mp4_max_second`（默认 5 分钟）切段录制，录制完成触发 `on_record_mp4`
   WebHook，后端据此写入录像索引，回放时直接由后端以 `video/mp4` 提供（支持拖动）。
 - **抓拍**：实时预览窗口优先直接从当前播放画面生成 JPEG 并下载，不依赖摄像机的抓图接口；

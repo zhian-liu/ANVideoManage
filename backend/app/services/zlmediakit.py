@@ -20,6 +20,11 @@ def flv_url(device_id: int) -> str:
     return f"{_media_base()}/{settings.zlm_app}/{stream_key(device_id)}.live.flv"
 
 
+def ts_url(device_id: int) -> str:
+    """返回 ZLMediaKit 的 HTTP MPEG-TS 地址（支持 H.264/H.265）。"""
+    return f"{_media_base()}/{settings.zlm_app}/{stream_key(device_id)}.live.ts"
+
+
 def hls_url(device_id: int) -> str:
     return f"{_media_base()}/{settings.zlm_app}/{stream_key(device_id)}/hls.m3u8"
 
@@ -48,9 +53,10 @@ class ZLMClient:
             "enable_rtsp": 1,
             "enable_rtmp": 1,
             "enable_hls": 1,
+            "enable_ts": 1,
             "enable_fmp4": 1,
-            # 浏览器端 flv.js 只支持 AAC/MP3；许多摄像机输出 PCMU/G.711，
-            # 关闭转协议音频可避免 FLV 播放失败，录像仍保留视频轨。
+            # 浏览器端 MSE 播放链路通常不支持 PCMU/G.711；
+            # 关闭转协议音频可避免实时播放失败，录像仍保留视频轨。
             "enable_audio": 0,
             "rtp_type": 0,
         }

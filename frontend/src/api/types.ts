@@ -50,6 +50,7 @@ export interface StreamInfo {
   device_id: number;
   online: boolean;
   recording: boolean;
+  ts_url: string;
   flv_url: string;
   hls_url: string;
 }
