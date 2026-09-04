@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+import sys
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -82,7 +83,13 @@ app.include_router(ptz.router)
 app.include_router(zlm_hook.router)
 
 
-frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+def _project_root() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent.parent
+    return Path(__file__).resolve().parents[2]
+
+
+frontend_dist = _project_root() / "frontend" / "dist"
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}

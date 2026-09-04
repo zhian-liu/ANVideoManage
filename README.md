@@ -74,11 +74,9 @@ npm run dev
 powershell -ExecutionPolicy Bypass -File .\packaging\package_windows.ps1
 ```
 
-脚本会自动构建前端，并在 `release/VideoManage` 生成可运行目录及
-`release/VideoManage.zip`。包内包含后端、前端静态文件、ZLMediaKit 和
-`start_windows.bat` 启动入口；目标机器需要 Python 3.11+，首次启动会自动创建
-虚拟环境并安装后端依赖。若希望把当前后端虚拟环境一并复制进包，可追加
-`-IncludeBackendVenv` 参数。
+脚本会使用 PyInstaller 将后端冻结为 `VideoManageBackend.exe`，再调用 Inno Setup
+生成 `release/VideoManageSetup.exe`。目标机器不需要安装 Python 或 Node.js，安装后
+通过桌面快捷方式启动即可。构建机器需要 Python 3.11+、Node.js 和 Inno Setup 6。
 
 ## 使用说明
 

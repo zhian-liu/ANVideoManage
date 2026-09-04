@@ -1,9 +1,9 @@
 VideoManage Windows package
 ==========================
 
-1. Install Python 3.11 or newer and make sure `py -3.11` is available.
-2. Double-click start_windows.bat.
-3. On the first run, the script creates backend\.venv and installs Python dependencies.
+1. Run the VideoManageSetup.exe installer.
+2. Use the desktop shortcut or start VideoManage from the Start menu.
+3. The installed program contains its own backend executable; Python is not required.
 4. Open http://127.0.0.1:8000 in a browser.
 5. Default login: admin / admin123.
 
