@@ -69,13 +69,14 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | 文件 | 职责 |
 | --- | --- |
 | `backend/app/main.py` | 创建 FastAPI 应用；启动时创建数据库表并种子默认管理员；挂载所有路由；在打包版本中托管 `frontend/dist`；提供 `/api/health`。 |
-| `backend/app/config.py` | `Settings` 配置类，读取 `.env`；包含 JWT、SQLite、ZLMediaKit API/端口和 WebHook 地址。 |
+| `backend/app/config.py` | `Settings` 配置类，读取 `.env`；包含 JWT、SQLite、ZLMediaKit API/端口、WebHook 地址和默认录像/抓拍目录。 |
 | `backend/app/database.py` | 创建 SQLAlchemy 异步引擎、`SessionLocal` 和 `get_db` 依赖。默认数据库为 `backend/data/app.db`（以启动工作目录为相对基准）。 |
 | `backend/app/core/security.py` | bcrypt 密码哈希、密码校验、JWT 创建和解析。 |
 | `backend/app/core/deps.py` | `get_current_user`（仅请求头）和 `get_current_user_flex`（请求头或 `?token=`）鉴权依赖，以及角色依赖工厂。 |
 | `backend/app/schemas/auth.py` | 登录请求、JWT 返回和用户输出模型。 |
 | `backend/app/schemas/device.py` | 设备创建、更新和输出模型。 |
 | `backend/app/schemas/recording.py` | 录像索引输出模型。 |
+| `backend/app/schemas/settings.py` | 存储路径设置请求/响应模型，并校验路径长度和空字符。 |
 
 ### 3.2 数据模型
 
@@ -84,6 +85,7 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `backend/app/models/user.py` | `users` 表；用户名、bcrypt 密码、角色、启用状态。 |
 | `backend/app/models/device.py` | `devices` 表；设备名称、厂商、接入方式、IP/端口、账号密码、RTSP 地址、ONVIF 端口、PTZ/录像/启用开关和在线状态。 |
 | `backend/app/models/recording.py` | `recordings` 表；设备、开始/结束时间、ZLMediaKit 文件路径/名称/大小。 |
+| `backend/app/models/setting.py` | `app_settings` 表；以键值形式保存管理界面修改的录像和抓拍目录。 |
 | `backend/app/models/__init__.py` | 统一导出模型，确保建表时被 SQLAlchemy 导入。 |
 
 ### 3.3 摄像机适配器
@@ -102,6 +104,7 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | --- | --- |
 | `backend/app/services/zlmediakit.py` | ZLMediaKit REST 客户端、统一 stream key、播放地址构造、录像/抓图/在线流查询。设备流名固定为 `device_{device_id}`。 |
 | `backend/app/services/stream_sync.py` | `apply_stream`：设备新建或更新后，根据适配器解析的地址调用 ZLMediaKit `addStreamProxy`；设备禁用时删除代理。失败不会阻止设备入库。 |
+| `backend/app/services/storage.py` | 读取/保存 `app_settings` 中的存储路径；将抓拍 JPEG 写入日期目录；将 ZLMediaKit 完成的 MP4 分片归档到自定义录像目录。 |
 
 ### 3.5 HTTP 路由文件
 
@@ -112,6 +115,7 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `backend/app/api/streams.py` | `/api/streams` | 流信息、协议地址、启停流、录像控制、状态和抓拍。 |
 | `backend/app/api/recordings.py` | `/api/recordings` | 录像索引查询、MP4 文件下载/播放和删除。 |
 | `backend/app/api/ptz.py` | `/api/devices` | PTZ 移动、变焦和停止。 |
+| `backend/app/api/settings.py` | `/api/settings` | 设置页读取网络信息和修改录像/抓拍存储目录。 |
 | `backend/app/api/zlm_hook.py` | `/api/zlm/hook` | 接收 ZLMediaKit 流状态和录像完成 WebHook；不要求用户登录。 |
 
 ## 4. 后端 HTTP 接口清单
@@ -148,6 +152,7 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `POST` | `/api/streams/{id}/record/stop` | `api.stopRecording`，`Live` | 调用 ZLMediaKit `stopRecord(type=1)`。 |
 | `GET` | `/api/streams/{id}/record/status` | `api.getRecordingStatus`（保留接口） | 查询 ZLMediaKit MP4 录像状态。 |
 | `GET` | `/api/streams/{id}/snapshot` | `api.captureSnapshot`，`Live` | 先尝试 ONVIF `GetSnapshotUri`，失败后调用 ZLMediaKit `getSnap` 生成 JPEG。返回 `image/jpeg`。 |
+| `POST` | `/api/streams/{id}/snapshot/save` | `api.saveSnapshot`，`Live` | 获取 JPEG 后按设置页中的抓拍目录保存，并返回实际文件路径。 |
 
 ### 4.4 录像回放与文件
 
@@ -157,7 +162,14 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `GET` | `/api/recordings/{recording_id}/file` | `api.recordingFileUrl`，`Playback` | 返回 MP4 文件。`<video>` 不能方便地附加请求头，因此同时支持 `?token=<JWT>`。 |
 | `DELETE` | `/api/recordings/{recording_id}` | 可供扩展使用 | 删除磁盘文件并删除录像索引。 |
 
-### 4.5 PTZ
+### 4.5 系统设置
+
+| 方法 | 路径 | 前端调用 | 说明 |
+| --- | --- | --- | --- |
+| `GET` | `/api/settings` | `api.getSettings`，`Settings.tsx` | 返回当前录像/抓拍目录、默认目录、后端地址、ZLMediaKit 地址和端口。 |
+| `PUT` | `/api/settings/storage` | `api.updateStorageSettings`，`Settings.tsx` | 保存录像和抓拍目录；空录像目录表示继续使用 ZLMediaKit 原始目录，空抓拍目录恢复后端默认目录。 |
+
+### 4.6 PTZ
 
 | 方法 | 路径 | 前端调用 | 说明 |
 | --- | --- | --- | --- |
@@ -165,14 +177,14 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `POST` | `/api/devices/{id}/ptz/zoom` | `api.ptzZoom`，`PTZPanel` | 请求 `{direction,speed}`，方向为 `in/out`。 |
 | `POST` | `/api/devices/{id}/ptz/stop` | `api.ptzStop`，`PTZPanel` | 停止移动或变焦。 |
 
-### 4.6 ZLMediaKit WebHook
+### 4.7 ZLMediaKit WebHook
 
 这两个接口由 ZLMediaKit 调用，不使用用户 JWT；必须在 ZLMediaKit 配置中能访问 `WEBHOOK_BASE`。
 
 | 方法 | 路径 | 触发时机 | 后端动作 |
 | --- | --- | --- | --- |
 | `POST` | `/api/zlm/hook/on_stream_changed` | 流上线或下线 | 从 `stream=device_{id}` 解析设备 ID，更新 `Device.status`。 |
-| `POST` | `/api/zlm/hook/on_record_mp4` | MP4 分片完成 | 从回调字段读取开始时间、时长、文件路径、文件名和大小，写入 `Recording` 索引。 |
+| `POST` | `/api/zlm/hook/on_record_mp4` | MP4 分片完成 | 从回调字段读取开始时间、时长、文件路径、文件名和大小；按配置归档文件后写入 `Recording` 索引。 |
 
 ## 5. 前端业务与代码清单
 
@@ -181,7 +193,7 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | 文件 | 职责 |
 | --- | --- |
 | `frontend/src/main.tsx` | 组合 `ThemeProvider`、`BrowserRouter`、`AuthProvider`，挂载 React 应用。 |
-| `frontend/src/App.tsx` | 路由表和登录保护：设备总览 `/`、实时预览 `/live`、录像回放 `/playback`、设备管理 `/devices`。 |
+| `frontend/src/App.tsx` | 路由表和登录保护：设备总览 `/`、实时预览 `/live`、录像回放 `/playback`、设备管理 `/devices`、系统设置 `/settings`。 |
 | `frontend/src/store/auth.tsx` | 保存 JWT 到 `localStorage`，登录后加载 `/auth/me`，失效时清除令牌。 |
 | `frontend/src/layouts/MainLayout.tsx` | 侧边菜单、顶部用户区、主题切换和页面内容容器。 |
 
@@ -190,8 +202,8 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | 文件 | 职责 |
 | --- | --- |
 | `frontend/src/api/client.ts` | Axios 实例，基础路径为 `/api`；请求拦截器添加 Bearer JWT；401 自动回登录页。 |
-| `frontend/src/api/index.ts` | 所有后端调用函数：登录、用户、设备、流、抓拍、录像、录像查询和 PTZ。 |
-| `frontend/src/api/types.ts` | `User`、`Device`、`StreamInfo`、`StreamProtocolsInfo`、`RecordStatus`、`Recording` 等 TypeScript 类型。 |
+| `frontend/src/api/index.ts` | 所有后端调用函数：登录、用户、设备、流、抓拍、录像、录像查询、设置和 PTZ。 |
+| `frontend/src/api/types.ts` | `User`、`Device`、`StreamInfo`、`StreamProtocolsInfo`、`RecordStatus`、`StorageSettings`、`SnapshotSaveResult`、`Recording` 等 TypeScript 类型。 |
 
 ### 5.3 页面与组件
 
@@ -202,6 +214,7 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `frontend/src/pages/Devices.tsx` | 设备增删改、状态展示和“查看流地址”弹窗；调用设备 CRUD 与 `api.getStreamProtocols`。 |
 | `frontend/src/pages/Live.tsx` | 设备树、单/4/9/16 窗口、窗口选中、同设备多窗口播放、暂停、关闭、抓拍、录像和详情弹窗；调用流信息、停止流、抓拍、录像和 PTZ API。 |
 | `frontend/src/pages/Playback.tsx` | 设备/时间范围筛选录像，选择录像后播放；调用 `api.listDevices`、`api.listRecordings` 和 `api.recordingFileUrl`。 |
+| `frontend/src/pages/Settings.tsx` | 设置页的基础设置、网络设置和流媒体服务标签；基础设置调用 `api.getSettings`/`api.updateStorageSettings` 修改录像和抓拍目录。 |
 | `frontend/src/components/DeviceForm.tsx` | 添加/编辑设备表单，调用 `api.createDevice` 或 `api.updateDevice`。 |
 | `frontend/src/components/VideoPlayer.tsx` | 封装 `<video>` 与 `mpegts.js`；实时流使用 MSE，优先 TS、失败回退 FLV；回放使用原生 MP4。支持暂停、静音和错误回调。 |
 | `frontend/src/components/PTZPanel.tsx` | 按住方向/变焦按钮调用 `api.ptzMove`/`api.ptzZoom`，松开调用 `api.ptzStop`。 |
@@ -276,14 +289,13 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 1. 前端点击开始录像，调用 `/api/streams/{id}/record/start`。
 2. 后端确保 `device_{id}` 已在 ZLMediaKit 注册，然后调用 `startRecord(type=1)`。
 3. ZLMediaKit 按 `mp4_max_second` 切分 MP4，并写入 `mp4_save_path`。
-4. 每个分片完成后，ZLMediaKit 调用 `on_record_mp4`；后端把回调元数据写入 SQLite 的 `recordings` 表。
+4. 每个分片完成后，ZLMediaKit 调用 `on_record_mp4`；如果设置页配置了录像目录，后端会把分片归档到 `<录像目录>/<app>/<stream>/<日期>/`，否则保留 ZLMediaKit 原路径；随后把回调元数据写入 SQLite 的 `recordings` 表。
 5. 回放页查询索引，视频地址为 `/api/recordings/{recording_id}/file?token=<JWT>`，后端以 `video/mp4` 返回原文件。
 6. 删除录像时，后端同时删除磁盘文件和数据库索引。
 
 ### 7.2 抓拍
 
-实时预览窗口优先使用浏览器当前 `<video>` 画面绘制 Canvas 并下载 JPEG，不经过后端。若视频尚未有可用帧、Canvas 因跨域被污染或绘制失败，则回退调用 `/api/streams/{id}/snapshot`。
-后端先尝试 ONVIF `GetSnapshotUri`，失败后调用 ZLMediaKit `getSnap`。因此纯 RTSP 设备也可以抓拍，但 ZLMediaKit 回退路径必须能使用 FFmpeg。
+点击抓拍时前端优先调用 `/api/streams/{id}/snapshot/save`，后端先尝试 ONVIF `GetSnapshotUri`，失败后调用 ZLMediaKit `getSnap`，再按设置页中的抓拍目录保存为 `<抓拍目录>/<日期>/device_<id>_<时间>.jpg`。保存接口失败时，前端仍会尝试当前视频帧并下载到浏览器；纯 RTSP 设备的后端回退路径必须能使用 FFmpeg。
 
 ### 7.3 在线状态
 
@@ -293,7 +305,7 @@ ZLMediaKit 的 `on_stream_changed` 回调负责更新数据库状态；设备列
 
 - `SECRET_KEY` 是平台 JWT 签名密钥；前端不保存其原文，只保存登录后得到的 JWT。后端重启后必须保持 `SECRET_KEY` 不变，否则旧令牌全部失效。
 - `ZLM_API_SECRET` 是后端调用 ZLMediaKit REST API 的密钥，对应 ZLMediaKit 配置 `[api] secret`。两边都为空表示关闭 ZLMediaKit API 鉴权；只配置一边会导致所有 ZLMediaKit API 调用失败。
+- `RECORDING_PATH` 和 `SNAPSHOT_PATH` 是默认存储目录，也可以在左侧“设置”页的“基础设置”中修改；修改后的值保存到 `app_settings`，优先级高于 `.env`，服务重启后仍保留。
 - `WEBHOOK_BASE` 必须是 ZLMediaKit 能访问到的后端地址。后端端口默认为 `8000`，前端开发服务器默认为 `5173`。
 - Windows 打包入口为 `backend/packaged_main.py`；构建后目标机不需要安装 Python/Node，但仍需要单独运行可访问的 ZLMediaKit（或将其一并放入安装包并配置启动脚本）。
 - 浏览器实时播放的主链路是 HTTP-TS + MSE，H.265 最终解码依赖 Windows 和 Chrome/Edge 的 HEVC 能力；当前版本不通过 FFmpeg 转码。
-

@@ -4,6 +4,8 @@ import type {
   DeviceInput,
   Recording,
   RecordStatus,
+  SnapshotSaveResult,
+  StorageSettings,
   StreamInfo,
   StreamProtocolsInfo,
   TokenResponse,
@@ -67,6 +69,24 @@ export async function captureSnapshot(id: number): Promise<Blob> {
   const { data } = await client.get(`/streams/${id}/snapshot`, {
     responseType: 'blob',
   });
+  return data;
+}
+
+export async function saveSnapshot(id: number): Promise<SnapshotSaveResult> {
+  const { data } = await client.post(`/streams/${id}/snapshot/save`);
+  return data;
+}
+
+export async function getSettings(): Promise<StorageSettings> {
+  const { data } = await client.get('/settings');
+  return data;
+}
+
+export async function updateStorageSettings(input: {
+  recording_path: string;
+  snapshot_path: string;
+}): Promise<StorageSettings> {
+  const { data } = await client.put('/settings/storage', input);
   return data;
 }
 

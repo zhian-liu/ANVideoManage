@@ -1,5 +1,6 @@
 import {
   DashboardOutlined,
+  DatabaseOutlined,
   LogoutOutlined,
   PlaySquareOutlined,
   SettingOutlined,
@@ -14,6 +15,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../store/auth';
 import { useTheme } from '../theme/ThemeProvider';
+import InkLandscape from '../components/InkLandscape';
 
 const { Header, Sider, Content } = Layout;
 
@@ -21,7 +23,8 @@ const menuItems: MenuProps['items'] = [
   { key: '/', icon: <DashboardOutlined />, label: '设备总览' },
   { key: '/live', icon: <VideoCameraOutlined />, label: '实时预览' },
   { key: '/playback', icon: <PlaySquareOutlined />, label: '录像回放' },
-  { key: '/devices', icon: <SettingOutlined />, label: '设备管理' },
+  { key: '/devices', icon: <DatabaseOutlined />, label: '设备管理' },
+  { key: '/settings', icon: <SettingOutlined />, label: '设置' },
 ];
 
 export default function MainLayout() {
@@ -45,11 +48,19 @@ export default function MainLayout() {
   ];
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <div
+      style={{
+        position: 'relative',
+        minHeight: '100vh',
+        background: theme.bg.base,
+      }}
+    >
+      <InkLandscape theme={theme} />
+      <Layout style={{ minHeight: '100vh', position: 'relative', zIndex: 1, background: 'transparent' }}>
       <Sider
         width={220}
         style={{
-          background: theme.bg.elevated,
+          background: `${theme.bg.elevated}e8`,
           borderRight: `1px solid ${theme.border.default}`,
           boxShadow: '2px 0 8px rgba(0, 0, 0, 0.08)',
         }}
@@ -63,7 +74,7 @@ export default function MainLayout() {
             justifyContent: 'center',
             padding: '0 20px',
             borderBottom: `1px solid ${theme.border.default}`,
-            background: theme.bg.header,
+            background: `${theme.bg.header}e8`,
             cursor: 'pointer',
           }}
           onClick={() => navigate('/')}
@@ -137,11 +148,11 @@ export default function MainLayout() {
         </div>
       </Sider>
 
-      <Layout>
+      <Layout style={{ background: 'transparent' }}>
         {/* 顶部导航 */}
         <Header
           style={{
-            background: theme.bg.header,
+            background: `${theme.bg.header}e8`,
             padding: '0 32px',
             display: 'flex',
             justifyContent: 'space-between',
@@ -157,7 +168,8 @@ export default function MainLayout() {
             {selectedKey === '/live' && '实时预览'}
             {selectedKey === '/playback' && '录像回放'}
             {selectedKey === '/devices' && '设备管理'}
-            {!['/','/live','/playback','/devices'].includes(selectedKey) && '设备总览'}
+            {selectedKey === '/settings' && '设置'}
+            {!['/','/live','/playback','/devices','/settings'].includes(selectedKey) && '设备总览'}
           </div>
 
           {/* 右侧工具栏 */}
@@ -211,7 +223,8 @@ export default function MainLayout() {
           style={{
             margin: 24,
             padding: 24,
-            background: theme.bg.base,
+            background: `${theme.bg.base}b8`,
+            backdropFilter: 'blur(2px)',
             minHeight: 'calc(100vh - 112px)',
           }}
         >
@@ -220,6 +233,7 @@ export default function MainLayout() {
           </div>
         </Content>
       </Layout>
-    </Layout>
+      </Layout>
+    </div>
   );
 }

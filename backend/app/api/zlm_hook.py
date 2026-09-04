@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Device, Recording
+from app.services.storage import archive_recording
 
 router = APIRouter(prefix="/api/zlm/hook", tags=["zlm-hook"])
 
@@ -49,12 +50,22 @@ async def on_record_mp4(body: dict, db: AsyncSession = Depends(get_db)):
     time_len = float(body.get("time_len") or 0)
     end_dt = start_dt + timedelta(seconds=time_len)
 
+    file_name = body.get("file_name") or ""
+    file_path = body.get("file_path") or ""
+    file_path = await archive_recording(
+        db,
+        file_path,
+        file_name,
+        body.get("stream") or "",
+        start_dt,
+    )
+
     recording = Recording(
         device_id=device_id,
         start_time=start_dt,
         end_time=end_dt,
-        file_path=body.get("file_path") or "",
-        file_name=body.get("file_name") or "",
+        file_path=file_path,
+        file_name=file_name,
         file_size=int(body.get("file_size") or 0),
     )
     db.add(recording)

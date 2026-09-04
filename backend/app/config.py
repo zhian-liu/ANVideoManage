@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     zlm_rtsp_port: int = 554
     zlm_rtmp_port: int = 1935
 
+    # 文件存储。录像为空时沿用 ZLMediaKit 的 mp4_save_path；抓拍默认保存到后端 data 目录。
+    recording_path: str = ""
+    snapshot_path: str = "./data/snapshots"
+
     # 本后端地址（供 ZLMediaKit WebHook 回调）
     webhook_base: str = "http://127.0.0.1:8000"
 

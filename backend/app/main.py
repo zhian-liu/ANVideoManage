@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from starlette.exceptions import HTTPException
 
-from app.api import auth, devices, ptz, recordings, streams, zlm_hook
+from app.api import auth, devices, ptz, recordings, settings as settings_api, streams, zlm_hook
 from app.config import settings
 from app.core.security import hash_password
 from app.database import Base, SessionLocal, engine
@@ -80,6 +80,7 @@ app.include_router(devices.router)
 app.include_router(streams.router)
 app.include_router(recordings.router)
 app.include_router(ptz.router)
+app.include_router(settings_api.router)
 app.include_router(zlm_hook.router)
 
 

@@ -5,6 +5,7 @@ import { useState } from 'react';
 
 import { useAuth } from '../store/auth';
 import { useTheme } from '../theme/ThemeProvider';
+import InkLandscape from '../components/InkLandscape';
 
 interface LoginForm {
   username: string;
@@ -43,6 +44,8 @@ export default function Login() {
         overflow: 'hidden',
       }}
     >
+      <InkLandscape theme={theme} className="ink-landscape--login" />
+
       {/* 主题切换按钮 */}
       <Button
         type="text"

@@ -167,6 +167,15 @@ export default function Live() {
   const captureSnapshot = async (deviceId: number, deviceName: string) => {
     setSnapshottingDevices((prev) => ({ ...prev, [deviceId]: true }));
     try {
+      // Prefer the backend path so the configured snapshot directory is used.
+      try {
+        const saved = await api.saveSnapshot(deviceId);
+        message.success(`抓拍已保存：${saved.file_name}`);
+        return;
+      } catch {
+        // Fall back to the browser frame when the camera/ZLMediaKit snapshot API is unavailable.
+      }
+
       let blob: Blob | null = null;
       try {
         blob = await captureCurrentVideo(deviceId);
@@ -185,7 +194,7 @@ export default function Live() {
       link.click();
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      message.success('抓拍图片已下载');
+      message.success('抓拍图片已下载（后端保存失败，使用浏览器下载）');
     } catch {
       message.error('抓拍失败，请确认视频正在播放且设备配置正确');
     } finally {

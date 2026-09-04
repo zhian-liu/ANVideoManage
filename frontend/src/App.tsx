@@ -8,6 +8,7 @@ import Devices from './pages/Devices';
 import Live from './pages/Live';
 import Login from './pages/Login';
 import Playback from './pages/Playback';
+import Settings from './pages/Settings';
 import { useAuth } from './store/auth';
 
 function RequireAuth({ children }: { children: ReactElement }) {
@@ -46,6 +47,7 @@ export default function App() {
         <Route path="live" element={<Live />} />
         <Route path="playback" element={<Playback />} />
         <Route path="devices" element={<Devices />} />
+        <Route path="settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

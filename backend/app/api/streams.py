@@ -8,6 +8,7 @@ from app.core.deps import get_current_user
 from app.database import get_db
 from app.models import Device
 from app.services.stream_sync import apply_stream
+from app.services.storage import save_snapshot
 from app.services.zlmediakit import (
     flv_url,
     hls_url,
@@ -140,8 +141,7 @@ async def record_status(device_id: int, db: AsyncSession = Depends(get_db)):
     return {"device_id": device_id, "recording": await zlm.is_recording(device_id)}
 
 
-@router.get("/{device_id}/snapshot")
-async def snapshot(device_id: int, db: AsyncSession = Depends(get_db)):
+async def _capture_snapshot(device_id: int, db: AsyncSession) -> bytes:
     device = await _get_device(device_id, db)
     adapter = get_adapter(device.access_type)
     data: bytes | None = None
@@ -164,4 +164,17 @@ async def snapshot(device_id: int, db: AsyncSession = Depends(get_db)):
             raise HTTPException(status_code=501, detail="该设备不支持抓图")
         except Exception:
             raise HTTPException(status_code=502, detail="抓图失败，请检查设备和 RTSP 配置")
+    return data
+
+
+@router.get("/{device_id}/snapshot")
+async def snapshot(device_id: int, db: AsyncSession = Depends(get_db)):
+    data = await _capture_snapshot(device_id, db)
     return Response(content=data, media_type="image/jpeg")
+
+
+@router.post("/{device_id}/snapshot/save")
+async def save_snapshot_file(device_id: int, db: AsyncSession = Depends(get_db)):
+    data = await _capture_snapshot(device_id, db)
+    file_path, file_name = await save_snapshot(db, device_id, data)
+    return {"ok": True, "file_name": file_name, "file_path": file_path}

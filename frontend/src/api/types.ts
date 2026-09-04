@@ -74,6 +74,24 @@ export interface RecordStatus {
   recording: boolean;
 }
 
+export interface StorageSettings {
+  recording_path: string;
+  snapshot_path: string;
+  recording_path_default: string;
+  snapshot_path_default: string;
+  backend_base: string;
+  zlm_api_base: string;
+  zlm_http_port: number;
+  zlm_rtsp_port: number;
+  zlm_rtmp_port: number;
+}
+
+export interface SnapshotSaveResult {
+  ok: boolean;
+  file_name: string;
+  file_path: string;
+}
+
 export interface Recording {
   id: number;
   device_id: number;
