@@ -1,82 +1,82 @@
-// 深色主题调色板 - 基于青蓝色调
+// 深色水墨主题：墨黑背景、黛青主色和宣纸色文字
 export const darkTheme = {
   // 背景层级 - 从最深到最浅
   bg: {
-    base: '#0A0D12',      // 基础背景
-    elevated: '#0F131C',  // 卡片/面板
-    hover: '#161D2B',     // 悬停状态
-    active: '#1E2636',    // 激活状态
-    header: '#0D1117',    // 头部背景
+    base: '#171917',      // 墨底
+    elevated: '#222622',  // 砚台灰
+    hover: '#2C322C',     // 悬停状态
+    active: '#364036',    // 激活状态
+    header: '#121512',    // 头部背景
   },
-  // 主色 - 青蓝色
+  // 主色 - 黛青
   primary: {
-    main: '#38BDF8',      // 主色
-    hover: '#7DD3FC',     // 悬停
-    active: '#0EA5E9',    // 激活
-    dim: 'rgba(56, 189, 248, 0.1)', // 半透明背景
+    main: '#A9C7BF',      // 主色
+    hover: '#C7DDD5',     // 悬停
+    active: '#89AEA4',    // 激活
+    dim: 'rgba(169, 199, 191, 0.16)', // 半透明背景
   },
-  // 辅助色 - 翡翠绿
+  // 辅助色 - 纸上印章的暖色
   accent: {
-    main: '#6EE7B7',
-    hover: '#A7F3D0',
-    dim: 'rgba(110, 231, 183, 0.1)',
+    main: '#D6B87C',
+    hover: '#E4CEA1',
+    dim: 'rgba(214, 184, 124, 0.14)',
   },
   // 文字颜色
   text: {
-    primary: '#F8FAFC',
-    secondary: '#94A3B8',
-    tertiary: '#64748B',
-    inverse: '#0F172A',
+    primary: '#F3F0E7',
+    secondary: '#BAC0B7',
+    tertiary: '#899187',
+    inverse: '#182019',
   },
   // 边框
   border: {
-    default: 'rgba(148, 163, 184, 0.1)',
-    hover: 'rgba(148, 163, 184, 0.2)',
+    default: 'rgba(206, 213, 201, 0.16)',
+    hover: 'rgba(206, 213, 201, 0.28)',
   },
   // 状态色
   status: {
-    success: '#6EE7B7',
-    warning: '#FCD34D',
-    error: '#F87171',
-    info: '#38BDF8',
+    success: '#91B6A5',
+    warning: '#D2A96D',
+    error: '#D28C86',
+    info: '#A9C7BF',
   },
 };
 
-// 亮色主题调色板
+// 亮色水墨主题：宣纸白、墨绿和少量赭石
 export const lightTheme = {
   bg: {
-    base: '#FFFFFF',
-    elevated: '#F8FAFC',
-    hover: '#F1F5F9',
-    active: '#E2E8F0',
-    header: '#FFFFFF',
+    base: '#F4F1E8',
+    elevated: '#FBFAF5',
+    hover: '#E8E7DD',
+    active: '#D8DDD4',
+    header: '#F7F5EE',
   },
   primary: {
-    main: '#0EA5E9',
-    hover: '#0284C7',
-    active: '#0C4A6E',
-    dim: 'rgba(14, 165, 233, 0.1)',
+    main: '#385B54',
+    hover: '#2E4943',
+    active: '#244039',
+    dim: 'rgba(56, 91, 84, 0.12)',
   },
   accent: {
-    main: '#10B981',
-    hover: '#059669',
-    dim: 'rgba(16, 185, 129, 0.1)',
+    main: '#A67C52',
+    hover: '#8D6846',
+    dim: 'rgba(166, 124, 82, 0.12)',
   },
   text: {
-    primary: '#0F172A',
-    secondary: '#475569',
-    tertiary: '#64748B',
-    inverse: '#FFFFFF',
+    primary: '#202520',
+    secondary: '#566057',
+    tertiary: '#7A8279',
+    inverse: '#F8F5EA',
   },
   border: {
-    default: '#E2E8F0',
-    hover: '#CBD5E1',
+    default: '#CDD2C9',
+    hover: '#B9C2B8',
   },
   status: {
-    success: '#10B981',
-    warning: '#F59E0B',
-    error: '#EF4444',
-    info: '#0EA5E9',
+    success: '#477A62',
+    warning: '#A67C52',
+    error: '#B45F59',
+    info: '#385B54',
   },
 };
 

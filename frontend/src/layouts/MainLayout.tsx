@@ -75,28 +75,8 @@ export default function MainLayout() {
               gap: 12,
             }}
           >
-            <div
-              className="scale-pulse"
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: '8px',
-                background: `linear-gradient(135deg, ${theme.primary.main} 0%, ${theme.accent.main} 100%)`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 18,
-                boxShadow: `0 4px 12px ${theme.primary.dim}`,
-                transition: 'all 0.3s',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'rotate(10deg) scale(1.15)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'rotate(0deg) scale(1)';
-              }}
-            >
-              🎥
+            <div className="brand-mark scale-pulse">
+              <img src="/an-video-manage-logo.png" alt="ANVideoManage" />
             </div>
             <div>
               <div
@@ -105,13 +85,9 @@ export default function MainLayout() {
                   fontWeight: 700,
                   color: theme.text.primary,
                   lineHeight: 1.2,
-                  background: `linear-gradient(135deg, ${theme.primary.main} 0%, ${theme.accent.main} 100%)`,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
                 }}
               >
-                监控平台
+                ANVideoManage
               </div>
               <div
                 style={{
@@ -120,7 +96,7 @@ export default function MainLayout() {
                   marginTop: 2,
                 }}
               >
-                Video Manage
+                Video Management
               </div>
             </div>
           </div>
@@ -218,7 +194,8 @@ export default function MainLayout() {
                   size={32}
                   icon={<UserOutlined />}
                   style={{
-                    background: `linear-gradient(135deg, ${theme.primary.main} 0%, ${theme.accent.main} 100%)`,
+                    background: theme.primary.main,
+                    color: theme.text.inverse,
                   }}
                 />
                 <span style={{ color: theme.text.primary, fontWeight: 500 }}>

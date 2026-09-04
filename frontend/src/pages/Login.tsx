@@ -5,7 +5,6 @@ import { useState } from 'react';
 
 import { useAuth } from '../store/auth';
 import { useTheme } from '../theme/ThemeProvider';
-import { useMousePosition } from '../hooks/useAnimations';
 
 interface LoginForm {
   username: string;
@@ -18,7 +17,6 @@ export default function Login() {
   const { mode, theme, toggleTheme } = useTheme();
   const [form] = Form.useForm<LoginForm>();
   const [isLoading, setIsLoading] = useState(false);
-  const mousePosition = useMousePosition();
 
   const onFinish = async (values: LoginForm) => {
     setIsLoading(true);
@@ -40,71 +38,11 @@ export default function Login() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: mode === 'dark'
-          ? 'linear-gradient(135deg, #0A0D12 0%, #0F131C 50%, #161D2B 100%)'
-          : 'linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 100%)',
+        background: theme.bg.base,
         position: 'relative',
         overflow: 'hidden',
       }}
     >
-      {/* 背景装饰 - 跟随鼠标移动 */}
-      <div
-        style={{
-          position: 'absolute',
-          top: '-50%',
-          left: '-10%',
-          width: '500px',
-          height: '500px',
-          borderRadius: '50%',
-          background: `radial-gradient(circle, ${theme.primary.main}30 0%, transparent 70%)`,
-          filter: 'blur(60px)',
-          animation: 'float 8s ease-in-out infinite',
-          transform: `translate(${mousePosition.x * 0.02}px, ${mousePosition.y * 0.02}px)`,
-          transition: 'transform 0.3s ease-out',
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          bottom: '-30%',
-          right: '-10%',
-          width: '400px',
-          height: '400px',
-          borderRadius: '50%',
-          background: `radial-gradient(circle, ${theme.accent.main}30 0%, transparent 70%)`,
-          filter: 'blur(60px)',
-          animation: 'float 10s ease-in-out infinite reverse',
-          transform: `translate(${mousePosition.x * -0.03}px, ${mousePosition.y * -0.03}px)`,
-          transition: 'transform 0.3s ease-out',
-        }}
-      />
-
-      {/* 网格背景 */}
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          backgroundImage: mode === 'dark'
-            ? 'linear-gradient(rgba(56, 189, 248, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(56, 189, 248, 0.05) 1px, transparent 1px)'
-            : 'linear-gradient(rgba(14, 165, 233, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(14, 165, 233, 0.08) 1px, transparent 1px)',
-          backgroundSize: '50px 50px',
-          opacity: 0.5,
-        }}
-      />
-
-      <style>
-        {`
-          @keyframes float {
-            0%, 100% {
-              transform: translate(0, 0) scale(1);
-            }
-            50% {
-              transform: translate(20px, -20px) scale(1.1);
-            }
-          }
-        `}
-      </style>
-
       {/* 主题切换按钮 */}
       <Button
         type="text"
@@ -157,22 +95,8 @@ export default function Login() {
       >
         {/* Logo 和标题 */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div
-            className="scale-pulse"
-            style={{
-              width: 72,
-              height: 72,
-              margin: '0 auto 16px',
-              borderRadius: 16,
-              background: `linear-gradient(135deg, ${theme.primary.main} 0%, ${theme.accent.main} 100%)`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 36,
-              boxShadow: `0 8px 24px ${theme.primary.dim}`,
-            }}
-          >
-            📹
+          <div className="login-brand-mark scale-pulse">
+            <img src="/an-video-manage-logo.png" alt="ANVideoManage" />
           </div>
           <h2
             style={{
@@ -183,10 +107,10 @@ export default function Login() {
               marginBottom: 8,
             }}
           >
-            视频监控管理平台
+            ANVideoManage
           </h2>
           <p style={{ color: theme.text.tertiary, margin: 0, fontSize: 14 }}>
-            Video Surveillance Management System
+            Video Management Platform
           </p>
         </div>
 
@@ -226,13 +150,13 @@ export default function Login() {
               htmlType="submit"
               block
               loading={isLoading}
-              className="ripple gradient-animate"
+              className="ripple"
               style={{
                 height: 48,
                 borderRadius: 8,
                 fontSize: 16,
                 fontWeight: 600,
-                background: `linear-gradient(135deg, ${theme.primary.main} 0%, ${theme.accent.main} 100%)`,
+                background: theme.primary.main,
                 border: 'none',
                 boxShadow: `0 4px 16px ${theme.primary.dim}`,
                 transition: 'all 0.3s',

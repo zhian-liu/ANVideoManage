@@ -6,7 +6,7 @@
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  --shadow-glow: 0 0 20px rgba(56, 189, 248, 0.3);
+  --shadow-glow: 0 0 20px rgba(169, 199, 191, 0.25);
 }
 
 html,
@@ -35,7 +35,7 @@ body {
 }
 
 [data-theme='dark'] body {
-  background: #0A0D12;
+  background: #171917;
 }
 
 /* 亮色主题 */
@@ -44,7 +44,7 @@ body {
 }
 
 [data-theme='light'] body {
-  background: #FFFFFF;
+  background: #F4F1E8;
 }
 
 /* 滚动条样式 - 深色主题 */
@@ -54,16 +54,16 @@ body {
 }
 
 [data-theme='dark'] ::-webkit-scrollbar-track {
-  background: #0F131C;
+  background: #222622;
 }
 
 [data-theme='dark'] ::-webkit-scrollbar-thumb {
-  background: #1E2636;
+  background: #364036;
   border-radius: 4px;
 }
 
 [data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
-  background: #2A3447;
+  background: #4A584B;
 }
 
 /* 滚动条样式 - 亮色主题 */
@@ -73,16 +73,60 @@ body {
 }
 
 [data-theme='light'] ::-webkit-scrollbar-track {
-  background: #F1F5F9;
+  background: #E8E7DD;
 }
 
 [data-theme='light'] ::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
+  background: #B9C2B8;
   border-radius: 4px;
 }
 
 [data-theme='light'] ::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
+  background: #899187;
+}
+
+/* 品牌标识：使用图一裁切出的水墨摄像机图形 */
+.brand-mark {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(169, 199, 191, 0.35);
+  border-radius: 9px;
+  background: #f8f6ef;
+  box-shadow: 0 4px 12px rgba(20, 28, 22, 0.18);
+  transition: transform var(--transition-base), box-shadow var(--transition-base);
+}
+
+.brand-mark:hover {
+  box-shadow: 0 6px 16px rgba(20, 28, 22, 0.28);
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.login-brand-mark {
+  width: 118px;
+  height: 98px;
+  margin: 0 auto 16px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(169, 199, 191, 0.4);
+  border-radius: 14px;
+  background: #f8f6ef;
+  box-shadow: 0 10px 24px rgba(20, 28, 22, 0.16);
+}
+
+.login-brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 /* 视频播放器 */
@@ -191,12 +235,12 @@ body {
 }
 
 .status-online {
-  background: #6EE7B7;
-  box-shadow: 0 0 8px rgba(110, 231, 183, 0.5);
+  background: #91B6A5;
+  box-shadow: 0 0 8px rgba(145, 182, 165, 0.5);
 }
 
 .status-offline {
-  background: #64748B;
+  background: #899187;
 }
 
 /* 数字面板样式 */
