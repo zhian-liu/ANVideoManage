@@ -1,14 +1,17 @@
 import {
   AppstoreOutlined,
   BorderOutlined,
+  CameraOutlined,
   CloseOutlined,
   PauseOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
+  StopOutlined,
+  VideoCameraAddOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Empty, Modal, Tree } from 'antd';
+import { Button, Card, Empty, message, Modal, Tree } from 'antd';
 import type { DataNode } from 'antd/es/tree';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import * as api from '../api';
 import type { Device, StreamInfo } from '../api/types';
@@ -29,6 +32,28 @@ export default function Live() {
   const [selectedWindow, setSelectedWindow] = useState(0);
   const [selectedTreeDeviceId, setSelectedTreeDeviceId] = useState<number | null>(null);
   const [pausedWindows, setPausedWindows] = useState<Record<number, boolean>>({});
+  const [snapshottingDevices, setSnapshottingDevices] = useState<Record<number, boolean>>({});
+  const [recordingActions, setRecordingActions] = useState<Record<number, boolean>>({});
+  const videoElements = useRef<Record<number, Record<string, HTMLVideoElement>>>({});
+
+  const registerVideoElement = useCallback(
+    (deviceId: number, key: string, element: HTMLVideoElement | null) => {
+      const byKey = videoElements.current[deviceId] ?? {};
+      if (element) {
+        byKey[key] = element;
+        videoElements.current[deviceId] = byKey;
+        return;
+      }
+
+      delete byKey[key];
+      if (Object.keys(byKey).length === 0) {
+        delete videoElements.current[deviceId];
+      } else {
+        videoElements.current[deviceId] = byKey;
+      }
+    },
+    []
+  );
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -67,18 +92,21 @@ export default function Live() {
 
   // 将设备放入当前选中的视频窗口。
   const assignDeviceToWindow = (id: number) => {
+    const previousDeviceId = selectedDeviceIds[selectedWindow] ?? null;
+    const next = [...selectedDeviceIds];
+    next[selectedWindow] = id;
+
     setSelectedTreeDeviceId(id);
-    setSelectedDeviceIds((prev) => {
-      const next = [...prev];
-      next[selectedWindow] = id;
-      return next;
-    });
+    setSelectedDeviceIds(next);
     setPausedWindows((prev) => {
       if (!prev[selectedWindow]) return prev;
       const next = { ...prev };
       delete next[selectedWindow];
       return next;
     });
+    if (previousDeviceId != null && previousDeviceId !== id) {
+      stopStreamIfUnused(previousDeviceId, next);
+    }
   };
 
   const onDeviceSelect = (selectedKeys: React.Key[]) => {
@@ -91,19 +119,129 @@ export default function Live() {
     if (Number.isInteger(id)) assignDeviceToWindow(id);
   };
 
-  const closeWindow = (windowIndex: number) => {
-    setSelectedDeviceIds((prev) => {
-      if (prev[windowIndex] == null) return prev;
-      const next = [...prev];
-      next[windowIndex] = null;
-      return next;
+  const stopStreamIfUnused = (
+    deviceId: number,
+    assignments: Array<number | null>,
+    ignoreSelectedDetails = false
+  ) => {
+    // 正在录像或录制操作尚未完成时，不能删除共享的流代理。
+    const device = devices.find((item) => item.id === deviceId);
+    const recording = streams[deviceId]?.recording ?? device?.record_enabled ?? false;
+    if (recording || recordingActions[deviceId]) return;
+
+    const usedByWindow = assignments.some((assignedId) => assignedId === deviceId);
+    const usedByDetails = !ignoreSelectedDetails && selected?.id === deviceId;
+    if (usedByWindow || usedByDetails) return;
+
+    void api.stopStream(deviceId)
+      .then(() => {
+        setStreams((prev) => {
+          const info = prev[deviceId];
+          if (!info || !info.online) return prev;
+          return { ...prev, [deviceId]: { ...info, online: false } };
+        });
+      })
+      .catch(() => {
+        // 播放器已经在浏览器端关闭，停止代理失败不影响界面状态。
+      });
+  };
+
+  const captureCurrentVideo = async (deviceId: number): Promise<Blob | null> => {
+    const video = Object.values(videoElements.current[deviceId] ?? {})[0];
+    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return null;
+    if (!video.videoWidth || !video.videoHeight) return null;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // toBlob can throw when the media response lacks CORS headers.
+    return await new Promise((resolve) => {
+      canvas.toBlob(resolve, 'image/jpeg', 0.92);
     });
+  };
+
+  const captureSnapshot = async (deviceId: number, deviceName: string) => {
+    setSnapshottingDevices((prev) => ({ ...prev, [deviceId]: true }));
+    try {
+      let blob: Blob | null = null;
+      try {
+        blob = await captureCurrentVideo(deviceId);
+      } catch {
+        // A tainted canvas means the media server did not allow canvas access.
+        blob = null;
+      }
+      if (!blob) blob = await api.captureSnapshot(deviceId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const safeName = deviceName.replace(/[\\/:*?"<>|]/g, '_');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      link.href = url;
+      link.download = `${safeName}-${timestamp}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      message.success('抓拍图片已下载');
+    } catch {
+      message.error('抓拍失败，请确认视频正在播放且设备配置正确');
+    } finally {
+      setSnapshottingDevices((prev) => {
+        const next = { ...prev };
+        delete next[deviceId];
+        return next;
+      });
+    }
+  };
+
+  const toggleRecording = async (deviceId: number) => {
+    const current = Boolean(streams[deviceId]?.recording);
+    setRecordingActions((prev) => ({ ...prev, [deviceId]: true }));
+    try {
+      const status = current
+        ? await api.stopRecording(deviceId)
+        : await api.startRecording(deviceId);
+      setStreams((prev) => {
+        const info = prev[deviceId];
+        if (!info) return prev;
+        return {
+          ...prev,
+          [deviceId]: {
+            ...info,
+            online: status.recording ? true : info.online,
+            recording: status.recording,
+          },
+        };
+      });
+      message.success(status.recording ? '录像已开始' : '录像已停止');
+    } catch {
+      message.error(current ? '停止录像失败' : '启动录像失败');
+    } finally {
+      setRecordingActions((prev) => {
+        const next = { ...prev };
+        delete next[deviceId];
+        return next;
+      });
+    }
+  };
+
+  const closeWindow = (windowIndex: number) => {
+    const deviceId = selectedDeviceIds[windowIndex] ?? null;
+    if (deviceId == null) return;
+
+    const next = [...selectedDeviceIds];
+    next[windowIndex] = null;
+    setSelectedDeviceIds(next);
     setPausedWindows((prev) => {
       if (!prev[windowIndex]) return prev;
       const next = { ...prev };
       delete next[windowIndex];
       return next;
     });
+    stopStreamIfUnused(deviceId, next);
   };
 
   const toggleWindowPause = (windowIndex: number) => {
@@ -146,6 +284,7 @@ export default function Live() {
       const info = device ? streams[device.id] : null;
       const isSelected = selectedWindow === i;
       const isPaused = Boolean(pausedWindows[i]);
+      const isRecording = Boolean(info?.recording);
 
       cells.push(
         <div
@@ -219,6 +358,63 @@ export default function Live() {
                   borderRadius: 6,
                 }}
               />
+              <Button
+                type="text"
+                icon={<CameraOutlined />}
+                aria-label={`抓拍窗口 ${i + 1}`}
+                title="抓拍图片"
+                loading={Boolean(snapshottingDevices[deviceId])}
+                disabled={!device}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (device) void captureSnapshot(deviceId, device.name);
+                }}
+                onDoubleClick={(event) => event.stopPropagation()}
+                style={{
+                  position: 'absolute',
+                  bottom: 8,
+                  left: 44,
+                  zIndex: 3,
+                  width: 30,
+                  height: 30,
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  background: 'rgba(0, 0, 0, 0.45)',
+                  borderRadius: 6,
+                }}
+              />
+              <Button
+                type="text"
+                icon={isRecording ? <StopOutlined /> : <VideoCameraAddOutlined />}
+                aria-label={isRecording ? `停止窗口 ${i + 1} 录像` : `开始窗口 ${i + 1} 录像`}
+                aria-pressed={isRecording}
+                title={isRecording ? '停止录像' : '开始录像'}
+                loading={Boolean(recordingActions[deviceId])}
+                disabled={!device}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void toggleRecording(deviceId);
+                }}
+                onDoubleClick={(event) => event.stopPropagation()}
+                style={{
+                  position: 'absolute',
+                  bottom: 8,
+                  right: 8,
+                  zIndex: 3,
+                  width: 30,
+                  height: 30,
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: isRecording ? '#ff7875' : '#fff',
+                  background: 'rgba(0, 0, 0, 0.45)',
+                  borderRadius: 6,
+                }}
+              />
               <div
                 style={{
                   position: 'absolute',
@@ -254,7 +450,14 @@ export default function Live() {
           )}
           {device && info?.online ? (
             <>
-              <VideoPlayer url={info.flv_url} live muted paused={isPaused} />
+              <VideoPlayer
+                url={info.flv_url}
+                live
+                muted
+                paused={isPaused}
+                videoKey={`window-${i}`}
+                onVideoElement={(key, element) => registerVideoElement(device.id, key, element)}
+              />
               <div
                 style={{
                   position: 'absolute',
@@ -462,7 +665,11 @@ export default function Live() {
       {/* 设备详情弹窗 */}
       <Modal
         open={!!selected}
-        onCancel={() => setSelected(null)}
+        onCancel={() => {
+          const deviceId = selected?.id;
+          setSelected(null);
+          if (deviceId != null) stopStreamIfUnused(deviceId, selectedDeviceIds, true);
+        }}
         footer={null}
         title={selected?.name}
         width={820}
@@ -470,30 +677,55 @@ export default function Live() {
       >
         {selected && (
           <div style={{ display: 'flex', gap: 16 }}>
-            <div
-              style={{
-                flex: 1,
-                aspectRatio: '16 / 9',
-                background: '#000',
-                borderRadius: 4,
-                overflow: 'hidden',
-              }}
-            >
-              {streams[selected.id]?.online ? (
-                <VideoPlayer url={streams[selected.id].flv_url} live muted={false} />
-              ) : (
-                <div
-                  style={{
-                    height: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#999',
-                  }}
+            <div style={{ flex: 1 }}>
+              <div
+                style={{
+                  aspectRatio: '16 / 9',
+                  background: '#000',
+                  borderRadius: 4,
+                  overflow: 'hidden',
+                }}
+              >
+                {streams[selected.id]?.online ? (
+                    <VideoPlayer
+                      url={streams[selected.id].flv_url}
+                      live
+                      muted={false}
+                      videoKey="details"
+                      onVideoElement={(key, element) =>
+                        registerVideoElement(selected.id, key, element)
+                      }
+                    />
+                ) : (
+                  <div
+                    style={{
+                      height: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#999',
+                    }}
+                  >
+                    离线
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <Button
+                  icon={<CameraOutlined />}
+                  loading={Boolean(snapshottingDevices[selected.id])}
+                  onClick={() => void captureSnapshot(selected.id, selected.name)}
                 >
-                  离线
-                </div>
-              )}
+                  抓拍
+                </Button>
+                <Button
+                  icon={streams[selected.id]?.recording ? <StopOutlined /> : <VideoCameraAddOutlined />}
+                  loading={Boolean(recordingActions[selected.id])}
+                  onClick={() => void toggleRecording(selected.id)}
+                >
+                  {streams[selected.id]?.recording ? '停止录像' : '开始录像'}
+                </Button>
+              </div>
             </div>
             {selected.ptz_enabled && <PTZPanel deviceId={selected.id} />}
           </div>

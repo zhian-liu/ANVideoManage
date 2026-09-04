@@ -64,6 +64,59 @@ class ZLMClient:
             r = await client.get(self._url(f"/index/api/delStreamProxy?key={key}"))
             return r.json().get("code") == 0
 
+    async def start_record(self, device_id: int) -> bool:
+        params = {
+            "type": 1,
+            "vhost": DEFAULT_VHOST,
+            "app": settings.zlm_app,
+            "stream": stream_key(device_id),
+        }
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(self._url("/index/api/startRecord"), params=params)
+            data = r.json()
+        return data.get("code") == 0 and bool(data.get("result", True))
+
+    async def stop_record(self, device_id: int) -> bool:
+        params = {
+            "type": 1,
+            "vhost": DEFAULT_VHOST,
+            "app": settings.zlm_app,
+            "stream": stream_key(device_id),
+        }
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(self._url("/index/api/stopRecord"), params=params)
+            data = r.json()
+        return data.get("code") == 0 and bool(data.get("result", True))
+
+    async def is_recording(self, device_id: int) -> bool:
+        params = {
+            "type": 1,
+            "vhost": DEFAULT_VHOST,
+            "app": settings.zlm_app,
+            "stream": stream_key(device_id),
+        }
+        async with httpx.AsyncClient(timeout=10) as client:
+            try:
+                r = await client.get(self._url("/index/api/isRecording"), params=params)
+                data = r.json()
+            except Exception:
+                return False
+        return data.get("code") == 0 and bool(data.get("status"))
+
+    async def get_snapshot(self, source_url: str) -> bytes:
+        params = {
+            "url": source_url,
+            "timeout_sec": 10,
+            "expire_sec": 1,
+        }
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(self._url("/index/api/getSnap"), params=params)
+            r.raise_for_status()
+        content_type = r.headers.get("content-type", "")
+        if not content_type.startswith("image/"):
+            raise RuntimeError("ZLMediaKit 未返回图片")
+        return r.content
+
     async def online_streams(self) -> set[str]:
         """返回当前在线流的 stream 名集合。"""
         async with httpx.AsyncClient(timeout=10) as client:

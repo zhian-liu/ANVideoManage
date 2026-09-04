@@ -3,6 +3,7 @@ import type {
   Device,
   DeviceInput,
   Recording,
+  RecordStatus,
   StreamInfo,
   TokenResponse,
   User,
@@ -54,6 +55,28 @@ export async function startStream(id: number): Promise<void> {
 
 export async function stopStream(id: number): Promise<void> {
   await client.post(`/streams/${id}/stop`);
+}
+
+export async function captureSnapshot(id: number): Promise<Blob> {
+  const { data } = await client.get(`/streams/${id}/snapshot`, {
+    responseType: 'blob',
+  });
+  return data;
+}
+
+export async function startRecording(id: number): Promise<RecordStatus> {
+  const { data } = await client.post(`/streams/${id}/record/start`);
+  return data;
+}
+
+export async function stopRecording(id: number): Promise<RecordStatus> {
+  const { data } = await client.post(`/streams/${id}/record/stop`);
+  return data;
+}
+
+export async function getRecordingStatus(id: number): Promise<RecordStatus> {
+  const { data } = await client.get(`/streams/${id}/record/status`);
+  return data;
 }
 
 export async function listRecordings(params?: {

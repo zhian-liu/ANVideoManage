@@ -15,6 +15,8 @@ hiddenimports = (
     collect_submodules("app")
     + collect_submodules("onvif")
     + collect_submodules("zeep")
+    + collect_submodules("passlib.handlers")
+    + collect_submodules("aiosqlite")
 )
 
 

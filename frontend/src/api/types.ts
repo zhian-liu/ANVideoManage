@@ -49,8 +49,14 @@ export interface DeviceInput {
 export interface StreamInfo {
   device_id: number;
   online: boolean;
+  recording: boolean;
   flv_url: string;
   hls_url: string;
+}
+
+export interface RecordStatus {
+  device_id: number;
+  recording: boolean;
 }
 
 export interface Recording {

@@ -83,7 +83,7 @@ powershell -ExecutionPolicy Bypass -File .\packaging\package_windows.ps1
 1. **添加设备**：进入「设备管理」→「添加设备」，填写名称，选择接入方式：
    - **RTSP/ONVIF**：填写 IP / RTSP 端口 / ONVIF 端口 / 用户名 / 密码；若已知 RTSP 地址可直接填入「RTSP 地址」列（优先使用）。
    - 厂商云 API / 私有 SDK 为预留，当前会提示未实现。
-2. **实时预览**：进入「实时预览」查看多画面宫格，点击某一格放大并（若启用云台）显示云台控制。
+2. **实时预览**：进入「实时预览」查看多画面宫格。每个窗口支持暂停、关闭、抓拍和开始/停止 MP4 录像；点击某一格放大并（若启用云台）显示云台控制。
 3. **录像回放**：进入「录像回放」选择设备与时间范围查询，点击列表项回放。
 4. **云台 PTZ**：在实时预览放大视图中，长按方向/变焦按钮控制，松手即停。
 
@@ -93,6 +93,11 @@ powershell -ExecutionPolicy Bypass -File .\packaging\package_windows.ps1
   `http://<ZLM主机>:8080/live/device_{id}.live.flv`（HTTP-FLV）播放。
 - **录像**：ZLMediaKit 按 `mp4_max_second`（默认 5 分钟）切段录制，录制完成触发 `on_record_mp4`
   WebHook，后端据此写入录像索引，回放时直接由后端以 `video/mp4` 提供（支持拖动）。
+- **抓拍**：实时预览窗口优先直接从当前播放画面生成 JPEG 并下载，不依赖摄像机的抓图接口；
+  后端 API 仍会优先尝试 ONVIF `GetSnapshotUri`，失败后回退到 ZLMediaKit `getSnap`。
+  使用 ZLMediaKit 回退方案时，需要在其配置的 `ffmpeg.bin` 位置提供 FFmpeg。
+- **手动录像**：开始/停止按钮调用 ZLMediaKit 的 `startRecord` / `stopRecord`（MP4 类型），
+  不会删除共享的流代理，因此不会影响其他窗口播放。
 - **状态**：设备在线状态由 `on_stream_changed` WebHook 更新，列表接口也会实时比对在线流。
 - **摄像机密码**：为连接摄像机，设备密码以明文存储于本地数据库（家庭内网场景可接受，生产建议加密）。
 
@@ -102,6 +107,9 @@ powershell -ExecutionPolicy Bypass -File .\packaging\package_windows.ps1
   若摄像机未填写 RTSP 地址，请确认其支持 ONVIF 且用户名密码正确。
 - **录像没有生成**：确认设备「启用录像」开启，且 ZLMediaKit 的 `protocol.enable_mp4` 与后端逐路控制兼容
   （旧版本可设为 `enable_mp4=1` 全局录像）；等待一个分片时长后刷新回放页。
+- **抓拍失败**：先确认视频窗口已经正常播放，窗口抓拍会直接读取当前画面；若调用后端抓拍 API，
+  请确认 ONVIF 端口、用户名和密码正确，或在 ZLMediaKit 的 `ffmpeg.bin` 位置安装 FFmpeg，
+  并确保纯 RTSP 设备填写的地址包含可用认证信息。
 - **浏览器无法播放**：确认 ZLMediaKit 配置 `http.allow_cross_domains=1`；HTTPS 部署时需改用 WebRTC/HLS。
 
 ## 后续扩展（预留）
