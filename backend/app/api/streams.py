@@ -8,7 +8,14 @@ from app.core.deps import get_current_user
 from app.database import get_db
 from app.models import Device
 from app.services.stream_sync import apply_stream
-from app.services.zlmediakit import flv_url, hls_url, stream_key, ts_url, zlm
+from app.services.zlmediakit import (
+    flv_url,
+    hls_url,
+    protocol_urls,
+    stream_key,
+    ts_url,
+    zlm,
+)
 
 router = APIRouter(
     prefix="/api/streams",
@@ -41,6 +48,18 @@ async def stream_info(device_id: int, db: AsyncSession = Depends(get_db)):
         "ts_url": ts_url(device.id),
         "flv_url": flv_url(device.id),
         "hls_url": hls_url(device.id),
+    }
+
+
+@router.get("/{device_id}/protocols")
+async def stream_protocols(device_id: int, db: AsyncSession = Depends(get_db)):
+    device = await _get_device(device_id, db)
+    online = stream_key(device.id) in await zlm.online_streams()
+    return {
+        "device_id": device.id,
+        "stream": stream_key(device.id),
+        "online": online,
+        "protocols": protocol_urls(device.id),
     }
 
 

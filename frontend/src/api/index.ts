@@ -5,6 +5,7 @@ import type {
   Recording,
   RecordStatus,
   StreamInfo,
+  StreamProtocolsInfo,
   TokenResponse,
   User,
 } from './types';
@@ -46,6 +47,11 @@ export async function deleteDevice(id: number): Promise<void> {
 
 export async function getStreamInfo(id: number): Promise<StreamInfo> {
   const { data } = await client.get(`/streams/${id}`);
+  return data;
+}
+
+export async function getStreamProtocols(id: number): Promise<StreamProtocolsInfo> {
+  const { data } = await client.get(`/streams/${id}/protocols`);
   return data;
 }
 

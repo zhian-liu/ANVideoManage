@@ -1,9 +1,22 @@
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Button, Card, Popconfirm, Space, Table, Tag, message } from 'antd';
+import { ApiOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import {
+  Button,
+  Card,
+  Empty,
+  Modal,
+  Popconfirm,
+  Space,
+  Spin,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+  message,
+} from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 
 import * as api from '../api';
-import type { Device } from '../api/types';
+import type { Device, StreamProtocolsInfo } from '../api/types';
 import DeviceForm from '../components/DeviceForm';
 
 export default function Devices() {
@@ -11,6 +24,10 @@ export default function Devices() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Device | null>(null);
   const [loading, setLoading] = useState(false);
+  const [protocolModalOpen, setProtocolModalOpen] = useState(false);
+  const [protocolLoading, setProtocolLoading] = useState(false);
+  const [protocolDevice, setProtocolDevice] = useState<Device | null>(null);
+  const [protocolInfo, setProtocolInfo] = useState<StreamProtocolsInfo | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -44,6 +61,20 @@ export default function Devices() {
   const onSuccess = () => {
     setOpen(false);
     refresh();
+  };
+
+  const openProtocols = async (device: Device) => {
+    setProtocolDevice(device);
+    setProtocolInfo(null);
+    setProtocolModalOpen(true);
+    setProtocolLoading(true);
+    try {
+      setProtocolInfo(await api.getStreamProtocols(device.id));
+    } catch {
+      message.error('获取流协议地址失败，请确认后端和 ZLMediaKit 正常运行');
+    } finally {
+      setProtocolLoading(false);
+    }
   };
 
   return (
@@ -108,6 +139,15 @@ export default function Devices() {
                 >
                   <a style={{ color: '#cf1322' }}>删除</a>
                 </Popconfirm>
+                <Tooltip title="查看流地址">
+                  <Button
+                    type="link"
+                    size="small"
+                    icon={<ApiOutlined />}
+                    aria-label={`查看${record.name}的流地址`}
+                    onClick={() => void openProtocols(record)}
+                  />
+                </Tooltip>
               </Space>
             ),
           },
@@ -119,6 +159,56 @@ export default function Devices() {
         onCancel={() => setOpen(false)}
         onSuccess={onSuccess}
       />
+      <Modal
+        title={`ZLMediaKit 流地址${protocolDevice ? ` - ${protocolDevice.name}` : ''}`}
+        open={protocolModalOpen}
+        onCancel={() => setProtocolModalOpen(false)}
+        footer={null}
+        width={920}
+        destroyOnClose
+      >
+        {protocolLoading ? (
+          <div style={{ minHeight: 180, display: 'grid', placeItems: 'center' }}>
+            <Spin />
+          </div>
+        ) : protocolInfo ? (
+          <>
+            <Space style={{ marginBottom: 12 }}>
+              <Tag color={protocolInfo.online ? 'green' : 'default'}>
+                {protocolInfo.online ? '流在线' : '流未上线'}
+              </Tag>
+              <Typography.Text code>{protocolInfo.stream}</Typography.Text>
+            </Space>
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+              地址由 ZLMediaKit 的 app/stream 自动生成；流未上线时，协议地址暂时无法访问。
+            </Typography.Paragraph>
+            <Table
+              rowKey="key"
+              size="small"
+              pagination={false}
+              dataSource={protocolInfo.protocols}
+              columns={[
+                { title: '协议', dataIndex: 'name', width: 140 },
+                {
+                  title: '流地址',
+                  dataIndex: 'url',
+                  render: (url: string) => (
+                    <Typography.Text
+                      copyable={{ text: url, tooltips: ['复制地址', '已复制'] }}
+                      style={{ wordBreak: 'break-all' }}
+                    >
+                      {url}
+                    </Typography.Text>
+                  ),
+                },
+                { title: '说明', dataIndex: 'description', width: 250 },
+              ]}
+            />
+          </>
+        ) : (
+          <Empty description="暂无协议地址" />
+        )}
+      </Modal>
     </Card>
   );
 }

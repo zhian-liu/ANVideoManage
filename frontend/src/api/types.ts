@@ -55,6 +55,20 @@ export interface StreamInfo {
   hls_url: string;
 }
 
+export interface StreamProtocol {
+  key: string;
+  name: string;
+  url: string;
+  description: string;
+}
+
+export interface StreamProtocolsInfo {
+  device_id: number;
+  stream: string;
+  online: boolean;
+  protocols: StreamProtocol[];
+}
+
 export interface RecordStatus {
   device_id: number;
   recording: boolean;

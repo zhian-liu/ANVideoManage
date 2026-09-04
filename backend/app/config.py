@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     zlm_api_secret: str = ""
     zlm_app: str = "live"
     zlm_http_port: int = 8080
+    zlm_rtsp_port: int = 554
+    zlm_rtmp_port: int = 1935
 
     # 本后端地址（供 ZLMediaKit WebHook 回调）
     webhook_base: str = "http://127.0.0.1:8000"
