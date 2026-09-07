@@ -123,7 +123,7 @@ class ZLMClient:
         return url
 
     async def add_stream_proxy(
-        self, device_id: int, rtsp_url: str, enable_mp4: bool = True
+        self, device_id: int, rtsp_url: str, enable_mp4: bool = False
     ) -> bool:
         body = {
             "vhost": DEFAULT_VHOST,

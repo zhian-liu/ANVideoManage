@@ -1,4 +1,5 @@
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 import sys
 
@@ -14,6 +15,8 @@ from app.config import settings
 from app.core.security import hash_password
 from app.database import Base, SessionLocal, engine
 from app.models import User
+from app.services.recording_cleanup import run_recording_cleanup
+from app.services.stream_sync import run_recording_policy
 
 
 class SPAStaticFiles(StaticFiles):
@@ -62,7 +65,20 @@ async def lifespan(app: FastAPI):
                 )
             )
             await session.commit()
-    yield
+    app.state.recording_cleanup_wakeup = asyncio.Event()
+    cleanup_task = asyncio.create_task(
+        run_recording_cleanup(app.state.recording_cleanup_wakeup),
+        name="recording-cleanup",
+    )
+    policy_task = asyncio.create_task(run_recording_policy(), name="recording-policy")
+    try:
+        yield
+    finally:
+        for task in (cleanup_task, policy_task):
+            task.cancel()
+        for task in (cleanup_task, policy_task):
+            with suppress(asyncio.CancelledError):
+                await task
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

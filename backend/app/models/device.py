@@ -31,7 +31,7 @@ class Device(Base):
     onvif_port: Mapped[int] = mapped_column(Integer, default=80)
 
     ptz_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    record_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    record_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # 在线状态：unknown / online / offline

@@ -1,6 +1,7 @@
 """Application storage settings and filesystem helpers."""
 
 import asyncio
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from app.models import AppSetting
 
 RECORDING_KEY = "recording_path"
 SNAPSHOT_KEY = "snapshot_path"
+RECORDING_RETENTION_KEY = "recording_retention_days"
 
 
 def _backend_root() -> Path:
@@ -46,13 +48,63 @@ async def get_storage_values(db: AsyncSession) -> tuple[str, str]:
     )
 
 
+async def get_recording_retention_days(db: AsyncSession) -> int:
+    """Zero (including missing/invalid settings) keeps recordings forever."""
+    value = await _get_value(db, RECORDING_RETENTION_KEY, "0")
+    try:
+        days = int(value)
+    except ValueError:
+        return 0
+    return days if 0 <= days <= 3650 else 0
+
+
+def _directory_roots() -> list[Path]:
+    if os.name == "nt":
+        import ctypes
+
+        drives = ctypes.windll.kernel32.GetLogicalDrives()
+        return [Path(f"{chr(65 + i)}:/") for i in range(26) if drives & (1 << i)]
+    return [Path("/")]
+
+
+def browse_storage_directories(path: str = "") -> dict:
+    """List one level on the storage host; never return file contents."""
+    if "\x00" in path:
+        raise ValueError("路径不能包含空字符")
+    if not path.strip():
+        return {
+            "current_path": "",
+            "parent_path": None,
+            "directories": [{"name": str(root), "path": str(root)} for root in _directory_roots()],
+        }
+
+    current = _absolute_path(path.strip())
+    directories = []
+    with os.scandir(current) as entries:
+        for entry in entries:
+            try:
+                if entry.is_dir():
+                    directories.append({"name": entry.name, "path": str(current / entry.name)})
+            except OSError:
+                continue
+    directories.sort(key=lambda entry: (entry["name"].casefold(), entry["name"]))
+    return {
+        "current_path": str(current),
+        "parent_path": str(current.parent) if current.parent != current else "",
+        "directories": directories,
+    }
+
+
 async def set_storage_values(
-    db: AsyncSession, recording_path: str, snapshot_path: str
+    db: AsyncSession,
+    recording_path: str,
+    snapshot_path: str,
+    recording_retention_days: int | None = None,
 ) -> tuple[str, str]:
-    for key, value in (
-        (RECORDING_KEY, recording_path),
-        (SNAPSHOT_KEY, snapshot_path),
-    ):
+    values = {RECORDING_KEY: recording_path, SNAPSHOT_KEY: snapshot_path}
+    if recording_retention_days is not None:
+        values[RECORDING_RETENTION_KEY] = str(recording_retention_days)
+    for key, value in values.items():
         result = await db.execute(select(AppSetting).where(AppSetting.key == key))
         item = result.scalar_one_or_none()
         if item is None:
@@ -84,7 +136,7 @@ async def archive_recording(
     stream: str,
     start_time: datetime,
 ) -> str:
-    """Copy a completed ZLMediaKit segment into the configured archive root.
+    """Move a completed ZLMediaKit segment into the configured archive root.
 
     An empty recording path keeps the original ZLMediaKit path untouched.
     """
@@ -101,7 +153,7 @@ async def archive_recording(
     )
     await asyncio.to_thread(target.parent.mkdir, parents=True, exist_ok=True)
 
-    def _copy() -> None:
+    def _move() -> None:
         if not source.is_file():
             return
         try:
@@ -109,7 +161,7 @@ async def archive_recording(
         except OSError:
             import shutil
 
-            shutil.copy2(source, target)
+            shutil.move(str(source), str(target))
 
-    await asyncio.to_thread(_copy)
+    await asyncio.to_thread(_move)
     return str(target) if target.exists() else source_path

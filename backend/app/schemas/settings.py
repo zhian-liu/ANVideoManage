@@ -10,6 +10,7 @@ def _validate_path(value: str) -> str:
 class StorageSettingsUpdate(BaseModel):
     recording_path: str = Field("", max_length=512)
     snapshot_path: str = Field("", max_length=512)
+    recording_retention_days: int = Field(0, ge=0, le=3650, strict=True)
 
     _path_validator = field_validator("recording_path", "snapshot_path")(_validate_path)
 
@@ -17,6 +18,7 @@ class StorageSettingsUpdate(BaseModel):
 class StorageSettingsOut(BaseModel):
     recording_path: str
     snapshot_path: str
+    recording_retention_days: int
     recording_path_default: str
     snapshot_path_default: str
     backend_base: str
@@ -24,6 +26,17 @@ class StorageSettingsOut(BaseModel):
     zlm_http_port: int
     zlm_rtsp_port: int
     zlm_rtmp_port: int
+
+
+class DirectoryEntryOut(BaseModel):
+    name: str
+    path: str
+
+
+class DirectoryListOut(BaseModel):
+    current_path: str
+    parent_path: str | None
+    directories: list[DirectoryEntryOut]
 
 
 class SnapshotSaveOut(BaseModel):

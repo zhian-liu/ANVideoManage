@@ -1,7 +1,6 @@
 import {
   CheckCircleOutlined,
   CloudServerOutlined,
-  FolderOpenOutlined,
   GlobalOutlined,
   SaveOutlined,
   SettingOutlined,
@@ -12,7 +11,8 @@ import {
   Card,
   Descriptions,
   Form,
-  Input,
+  InputNumber,
+  Radio,
   Space,
   Spin,
   Tabs,
@@ -23,11 +23,14 @@ import { useEffect, useState } from 'react';
 
 import * as api from '../api';
 import type { StorageSettings } from '../api/types';
+import DirectoryPickerInput from '../components/DirectoryPickerInput';
 import { useTheme } from '../theme/ThemeProvider';
 
 interface StorageForm {
   recording_path: string;
   snapshot_path: string;
+  auto_cleanup: boolean;
+  recording_retention_days: number;
 }
 
 export default function Settings() {
@@ -36,16 +39,23 @@ export default function Settings() {
   const [settings, setSettings] = useState<StorageSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const autoCleanup = Form.useWatch('auto_cleanup', form);
+
+  const fillForm = (data: StorageSettings) => {
+    form.setFieldsValue({
+      recording_path: data.recording_path,
+      snapshot_path: data.snapshot_path,
+      auto_cleanup: data.recording_retention_days > 0,
+      recording_retention_days: data.recording_retention_days || 30,
+    });
+  };
 
   const loadSettings = async () => {
     setLoading(true);
     try {
       const data = await api.getSettings();
       setSettings(data);
-      form.setFieldsValue({
-        recording_path: data.recording_path,
-        snapshot_path: data.snapshot_path,
-      });
+      fillForm(data);
     } catch {
       message.error('读取设置失败，请确认后端已启动');
     } finally {
@@ -57,19 +67,19 @@ export default function Settings() {
     void loadSettings();
   }, []);
 
-  const save = async () => {
-    const values = await form.validateFields();
+  const save = async (values: StorageForm) => {
     setSaving(true);
     try {
-      const data = await api.updateStorageSettings(values);
-      setSettings(data);
-      form.setFieldsValue({
-        recording_path: data.recording_path,
-        snapshot_path: data.snapshot_path,
+      const data = await api.updateStorageSettings({
+        recording_path: values.recording_path,
+        snapshot_path: values.snapshot_path,
+        recording_retention_days: values.auto_cleanup ? values.recording_retention_days : 0,
       });
+      setSettings(data);
+      fillForm(data);
       message.success('存储设置已保存');
     } catch {
-      message.error('保存失败，请检查路径格式和权限');
+      message.error('保存失败，请检查输入或稍后重试');
     } finally {
       setSaving(false);
     }
@@ -79,6 +89,8 @@ export default function Settings() {
     form.setFieldsValue({
       recording_path: settings?.recording_path_default ?? '',
       snapshot_path: settings?.snapshot_path_default ?? '',
+      auto_cleanup: false,
+      recording_retention_days: 30,
     });
   };
 
@@ -87,7 +99,13 @@ export default function Settings() {
       <Spin />
     </div>
   ) : (
-    <Form form={form} layout="vertical" style={{ maxWidth: 760 }}>
+    <Form
+      form={form}
+      layout="vertical"
+      style={{ maxWidth: 760 }}
+      disabled={saving || !settings}
+      onFinish={(values) => void save(values)}
+    >
       <Alert
         type="info"
         showIcon
@@ -104,25 +122,48 @@ export default function Settings() {
             : '留空时保留 ZLMediaKit 原始录像目录'
         }
       >
-        <Input
-          prefix={<FolderOpenOutlined />}
-          allowClear
+        <DirectoryPickerInput
+          pickerTitle="选择录像文件夹"
           placeholder="例如：D:\\VideoManage\\recordings"
         />
       </Form.Item>
+      <Form.Item
+        name="auto_cleanup"
+        label="录像保存方式"
+        extra="默认永久保存。自动清理按录像结束时间计算，也适用于已保存的历史录像。"
+      >
+        <Radio.Group
+          options={[
+            { label: '永久保存', value: false },
+            { label: '按天自动清理', value: true },
+          ]}
+        />
+      </Form.Item>
+      {autoCleanup && (
+        <Form.Item
+          name="recording_retention_days"
+          label="录像保留天数"
+          rules={[
+            { required: true, message: '请输入录像保留天数' },
+            { type: 'integer', min: 1, max: 3650, message: '请输入 1–3650 之间的整数' },
+          ]}
+          extra="保存后立即检查，之后每小时自动清理超过保留天数的已完成录像和回放记录。清理后的录像无法恢复，抓拍图片不受影响。"
+        >
+          <InputNumber min={1} max={3650} precision={0} addonAfter="天" style={{ width: 220 }} />
+        </Form.Item>
+      )}
       <Form.Item
         name="snapshot_path"
         label="抓拍存放地址"
         extra={`默认配置：${settings?.snapshot_path_default ?? './data/snapshots'}`}
       >
-        <Input
-          prefix={<FolderOpenOutlined />}
-          allowClear
+        <DirectoryPickerInput
+          pickerTitle="选择抓拍文件夹"
           placeholder="例如：D:\\VideoManage\\snapshots"
         />
       </Form.Item>
       <Space>
-        <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={() => void save()}>
+        <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving}>
           保存设置
         </Button>
         <Button onClick={reset}>恢复默认</Button>

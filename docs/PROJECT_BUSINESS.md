@@ -68,7 +68,7 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 
 | 文件 | 职责 |
 | --- | --- |
-| `backend/app/main.py` | 创建 FastAPI 应用；启动时创建数据库表并种子默认管理员；挂载所有路由；在打包版本中托管 `frontend/dist`；提供 `/api/health`。 |
+| `backend/app/main.py` | 创建 FastAPI 应用；启动时创建数据库表并种子默认管理员，启停录像清理后台任务；挂载所有路由；在打包版本中托管 `frontend/dist`；提供 `/api/health`。 |
 | `backend/app/config.py` | `Settings` 配置类，读取 `.env`；包含 JWT、SQLite、ZLMediaKit API/端口、WebHook 地址和默认录像/抓拍目录。 |
 | `backend/app/database.py` | 创建 SQLAlchemy 异步引擎、`SessionLocal` 和 `get_db` 依赖。默认数据库为 `backend/data/app.db`（以启动工作目录为相对基准）。 |
 | `backend/app/core/security.py` | bcrypt 密码哈希、密码校验、JWT 创建和解析。 |
@@ -76,7 +76,7 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `backend/app/schemas/auth.py` | 登录请求、JWT 返回和用户输出模型。 |
 | `backend/app/schemas/device.py` | 设备创建、更新和输出模型。 |
 | `backend/app/schemas/recording.py` | 录像索引输出模型。 |
-| `backend/app/schemas/settings.py` | 存储路径设置请求/响应模型，并校验路径长度和空字符。 |
+| `backend/app/schemas/settings.py` | 存储设置请求/响应模型，校验路径长度、空字符，以及录像保留天数（0–3650 的整数，0 表示永久保存）。 |
 
 ### 3.2 数据模型
 
@@ -85,7 +85,7 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `backend/app/models/user.py` | `users` 表；用户名、bcrypt 密码、角色、启用状态。 |
 | `backend/app/models/device.py` | `devices` 表；设备名称、厂商、接入方式、IP/端口、账号密码、RTSP 地址、ONVIF 端口、PTZ/录像/启用开关和在线状态。 |
 | `backend/app/models/recording.py` | `recordings` 表；设备、开始/结束时间、ZLMediaKit 文件路径/名称/大小。 |
-| `backend/app/models/setting.py` | `app_settings` 表；以键值形式保存管理界面修改的录像和抓拍目录。 |
+| `backend/app/models/setting.py` | `app_settings` 表；以键值形式保存管理界面修改的录像、抓拍目录和录像保留天数。 |
 | `backend/app/models/__init__.py` | 统一导出模型，确保建表时被 SQLAlchemy 导入。 |
 
 ### 3.3 摄像机适配器
@@ -103,8 +103,9 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | 文件 | 职责 |
 | --- | --- |
 | `backend/app/services/zlmediakit.py` | ZLMediaKit REST 客户端、统一 stream key、播放地址构造、录像/抓图/在线流查询。设备流名固定为 `device_{device_id}`。 |
-| `backend/app/services/stream_sync.py` | `apply_stream`：设备新建或更新后，根据适配器解析的地址调用 ZLMediaKit `addStreamProxy`；设备禁用时删除代理。失败不会阻止设备入库。 |
-| `backend/app/services/storage.py` | 读取/保存 `app_settings` 中的存储路径；将抓拍 JPEG 写入日期目录；将 ZLMediaKit 完成的 MP4 分片归档到自定义录像目录。 |
+| `backend/app/services/stream_sync.py` | `apply_stream`：新增代理时传入设备录像开关；修改配置先停止旧录像并删除旧代理，再重建代理，避免 `addStreamProxy` 对已存在代理拒绝更新。启动后及每分钟校正关闭录像设备的遗留录制状态。 |
+| `backend/app/services/storage.py` | 读取/保存 `app_settings` 中的存储路径和录像保留天数；将抓拍 JPEG 写入日期目录；将 ZLMediaKit 完成的 MP4 分片移入自定义录像目录，跨磁盘时复制成功后移除源文件。 |
+| `backend/app/services/recording_cleanup.py` | 启动、保存设置后和每小时清理过期录像；分批删除已完成录像文件与索引，文件删除失败时保留索引供下次重试。 |
 
 ### 3.5 HTTP 路由文件
 
@@ -115,7 +116,7 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `backend/app/api/streams.py` | `/api/streams` | 流信息、协议地址、启停流、录像控制、状态和抓拍。 |
 | `backend/app/api/recordings.py` | `/api/recordings` | 录像索引查询、MP4 文件下载/播放和删除。 |
 | `backend/app/api/ptz.py` | `/api/devices` | PTZ 移动、变焦和停止。 |
-| `backend/app/api/settings.py` | `/api/settings` | 设置页读取网络信息和修改录像/抓拍存储目录。 |
+| `backend/app/api/settings.py` | `/api/settings` | 设置页读取网络信息，修改录像/抓拍存储目录和录像保留天数。 |
 | `backend/app/api/zlm_hook.py` | `/api/zlm/hook` | 接收 ZLMediaKit 流状态和录像完成 WebHook；不要求用户登录。 |
 
 ## 4. 后端 HTTP 接口清单
@@ -148,7 +149,7 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `GET` | `/api/streams/{id}/protocols` | `api.getStreamProtocols`，`Devices` | 返回 RTSP、RTMP、HTTP-FLV、HTTP-TS、HTTP-FMP4、HLS、WebSocket 和 WebRTC 地址。 |
 | `POST` | `/api/streams/{id}/start` | `api.startStream`（保留接口） | 手动解析地址并调用 `addStreamProxy`。当前实时页主要通过 `getStreamInfo` 自动启动。 |
 | `POST` | `/api/streams/{id}/stop` | `api.stopStream`，`Live` | 删除该设备的共享流代理。只有前端确认没有使用者时才调用。 |
-| `POST` | `/api/streams/{id}/record/start` | `api.startRecording`，`Live` | 必要时先启动代理，等待媒体源注册，再调用 ZLMediaKit `startRecord(type=1)`。 |
+| `POST` | `/api/streams/{id}/record/start` | `api.startRecording`，`Live` | 要求设备及「启用录像」均开启，否则返回 403；必要时先启动代理，等待媒体源注册，再调用 ZLMediaKit `startRecord(type=1)`。 |
 | `POST` | `/api/streams/{id}/record/stop` | `api.stopRecording`，`Live` | 调用 ZLMediaKit `stopRecord(type=1)`。 |
 | `GET` | `/api/streams/{id}/record/status` | `api.getRecordingStatus`（保留接口） | 查询 ZLMediaKit MP4 录像状态。 |
 | `GET` | `/api/streams/{id}/snapshot` | `api.captureSnapshot`，`Live` | 先尝试 ONVIF `GetSnapshotUri`，失败后调用 ZLMediaKit `getSnap` 生成 JPEG。返回 `image/jpeg`。 |
@@ -166,8 +167,9 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 
 | 方法 | 路径 | 前端调用 | 说明 |
 | --- | --- | --- | --- |
-| `GET` | `/api/settings` | `api.getSettings`，`Settings.tsx` | 返回当前录像/抓拍目录、默认目录、后端地址、ZLMediaKit 地址和端口。 |
-| `PUT` | `/api/settings/storage` | `api.updateStorageSettings`，`Settings.tsx` | 保存录像和抓拍目录；空录像目录表示继续使用 ZLMediaKit 原始目录，空抓拍目录恢复后端默认目录。 |
+| `GET` | `/api/settings` | `api.getSettings`，`Settings.tsx` | 返回当前录像/抓拍目录、默认目录、`recording_retention_days`、后端地址、ZLMediaKit 地址和端口。 |
+| `GET` | `/api/settings/directories` | `api.browseDirectories`，`DirectoryPickerInput.tsx` | 登录后浏览后端主机的一级子文件夹；空 `path` 返回磁盘根目录，非空路径返回规范化的当前路径、上级路径和子文件夹，不返回文件内容。相对路径与存储服务使用同一基准。 |
+| `PUT` | `/api/settings/storage` | `api.updateStorageSettings`，`Settings.tsx` | 保存录像、抓拍目录和 `recording_retention_days`（0 为永久，1–3650 为保留天数；旧客户端省略时维持原值），保存后唤醒清理任务；空录像目录沿用 ZLMediaKit 原路径，空抓拍目录恢复后端默认目录。 |
 
 ### 4.6 PTZ
 
@@ -214,8 +216,9 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `frontend/src/pages/Devices.tsx` | 设备增删改、状态展示和“查看流地址”弹窗；调用设备 CRUD 与 `api.getStreamProtocols`。 |
 | `frontend/src/pages/Live.tsx` | 设备树、单/4/9/16 窗口、窗口选中、同设备多窗口播放、暂停、关闭、抓拍、录像和详情弹窗；调用流信息、停止流、抓拍、录像和 PTZ API。 |
 | `frontend/src/pages/Playback.tsx` | 设备/时间范围筛选录像，选择录像后播放；调用 `api.listDevices`、`api.listRecordings` 和 `api.recordingFileUrl`。 |
-| `frontend/src/pages/Settings.tsx` | 设置页的基础设置、网络设置和流媒体服务标签；基础设置调用 `api.getSettings`/`api.updateStorageSettings` 修改录像和抓拍目录。 |
+| `frontend/src/pages/Settings.tsx` | 设置页的基础设置、网络设置和流媒体服务标签；基础设置调用 `api.getSettings`/`api.updateStorageSettings` 修改录像、抓拍目录，选择永久保存或自定义保留天数；恢复默认会选回永久保存。 |
 | `frontend/src/components/DeviceForm.tsx` | 添加/编辑设备表单，调用 `api.createDevice` 或 `api.updateDevice`。 |
+| `frontend/src/components/DirectoryPickerInput.tsx` | 录像、抓拍目录共用的路径输入框；点击文件夹图标打开选择弹窗，支持磁盘、上级目录、输入路径和分页浏览；确认回填表单，页面保存后生效。 |
 | `frontend/src/components/VideoPlayer.tsx` | 封装 `<video>` 与 `mpegts.js`；实时流使用 MSE，优先 TS、失败回退 FLV；回放使用原生 MP4。支持暂停、静音和错误回调。 |
 | `frontend/src/components/PTZPanel.tsx` | 按住方向/变焦按钮调用 `api.ptzMove`/`api.ptzZoom`，松开调用 `api.ptzStop`。 |
 | `frontend/src/components/GridView.tsx` | 通用网格组件，目前为可复用基础组件，实时页使用了自定义网格渲染。 |
@@ -292,6 +295,15 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 4. 每个分片完成后，ZLMediaKit 调用 `on_record_mp4`；如果设置页配置了录像目录，后端会把分片归档到 `<录像目录>/<app>/<stream>/<日期>/`，否则保留 ZLMediaKit 原路径；随后把回调元数据写入 SQLite 的 `recordings` 表。
 5. 回放页查询索引，视频地址为 `/api/recordings/{recording_id}/file?token=<JWT>`，后端以 `video/mp4` 返回原文件。
 6. 删除录像时，后端同时删除磁盘文件和数据库索引。
+7. 新设备默认关闭录像。设备开关控制自动录制及手动开始权限；关闭后停止旧录制并重建代理，使断线重连也沿用关闭状态。历史索引继续可查询。设备配置保存成功但代理同步失败时返回 502，后台每分钟重试校正关闭录像的设备，避免界面静默报告成功。
+
+### 7.1.1 录像保留与自动清理
+
+- 设置以 `app_settings` 中的 `recording_retention_days` 键保存，无需表结构迁移；缺省或无效值视为 0（永久保存）。用户在基础设置中选择按天清理后，可输入 1–3650 天。
+- FastAPI 生命周期启动清理任务，关闭时取消。任务在启动、设置保存后以及运行期间每小时检查一次，异常记录日志后继续重试，无需打开浏览器。
+- `on_record_mp4` 写入的开始/结束时间为不带时区的 UTC。仅清理 `end_time < 当前 UTC 时间 - 保留天数` 的索引；跨越到期边界但仍有未过期内容的分片继续保留。
+- 每批最多 200 条，按索引保存的实际路径清理，因此更改录像目录后仍能清理旧目录中的历史录像。每批重新读取设置；不扫描目录，不清理抓拍、未入库的正在录制分片或其他文件。
+- 先删文件再删索引；文件已不存在时可直接移除索引，删除失败则保留索引重试，不阻塞其他录像。若文件仍被未过期索引引用，则只移除过期索引。清理后的录像无法恢复。
 
 ### 7.2 抓拍
 

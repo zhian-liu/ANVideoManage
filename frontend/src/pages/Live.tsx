@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import { Button, Card, Empty, message, Modal, Tree } from 'antd';
 import type { DataNode } from 'antd/es/tree';
+import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import * as api from '../api';
@@ -208,6 +209,10 @@ export default function Live() {
 
   const toggleRecording = async (deviceId: number) => {
     const current = Boolean(streams[deviceId]?.recording);
+    if (!current && !devices.find((device) => device.id === deviceId)?.record_enabled) {
+      message.warning('请先在设备管理中开启此设备的“启用录像”');
+      return;
+    }
     setRecordingActions((prev) => ({ ...prev, [deviceId]: true }));
     try {
       const status = current
@@ -226,8 +231,9 @@ export default function Live() {
         };
       });
       message.success(status.recording ? '录像已开始' : '录像已停止');
-    } catch {
-      message.error(current ? '停止录像失败' : '启动录像失败');
+    } catch (err) {
+      const detail = isAxiosError(err) ? err.response?.data?.detail : undefined;
+      message.error(typeof detail === 'string' ? detail : current ? '停止录像失败' : '启动录像失败');
     } finally {
       setRecordingActions((prev) => {
         const next = { ...prev };
@@ -400,9 +406,9 @@ export default function Live() {
                 icon={isRecording ? <StopOutlined /> : <VideoCameraAddOutlined />}
                 aria-label={isRecording ? `停止窗口 ${i + 1} 录像` : `开始窗口 ${i + 1} 录像`}
                 aria-pressed={isRecording}
-                title={isRecording ? '停止录像' : '开始录像'}
+                title={isRecording ? '停止录像' : device?.record_enabled ? '开始录像' : '请先在设备管理中启用录像'}
                 loading={Boolean(recordingActions[deviceId])}
-                disabled={!device}
+                disabled={!device || (!isRecording && !device.record_enabled)}
                 onClick={(event) => {
                   event.stopPropagation();
                   void toggleRecording(deviceId);
@@ -734,6 +740,8 @@ export default function Live() {
                 <Button
                   icon={streams[selected.id]?.recording ? <StopOutlined /> : <VideoCameraAddOutlined />}
                   loading={Boolean(recordingActions[selected.id])}
+                  disabled={!streams[selected.id]?.recording && !selected.record_enabled}
+                  title={!selected.record_enabled ? '请先在设备管理中启用录像' : undefined}
                   onClick={() => void toggleRecording(selected.id)}
                 >
                   {streams[selected.id]?.recording ? '停止录像' : '开始录像'}

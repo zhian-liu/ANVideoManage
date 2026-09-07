@@ -77,6 +77,7 @@ export interface RecordStatus {
 export interface StorageSettings {
   recording_path: string;
   snapshot_path: string;
+  recording_retention_days: number;
   recording_path_default: string;
   snapshot_path_default: string;
   backend_base: string;
@@ -90,6 +91,12 @@ export interface SnapshotSaveResult {
   ok: boolean;
   file_name: string;
   file_path: string;
+}
+
+export interface DirectoryListing {
+  current_path: string;
+  parent_path: string | null;
+  directories: { name: string; path: string }[];
 }
 
 export interface Recording {

@@ -2,6 +2,7 @@ import client from './client';
 import type {
   Device,
   DeviceInput,
+  DirectoryListing,
   Recording,
   RecordStatus,
   SnapshotSaveResult,
@@ -82,9 +83,19 @@ export async function getSettings(): Promise<StorageSettings> {
   return data;
 }
 
+export async function browseDirectories(path = '', signal?: AbortSignal): Promise<DirectoryListing> {
+  const { data } = await client.get('/settings/directories', {
+    params: { path },
+    signal,
+    timeout: 15000,
+  });
+  return data;
+}
+
 export async function updateStorageSettings(input: {
   recording_path: string;
   snapshot_path: string;
+  recording_retention_days: number;
 }): Promise<StorageSettings> {
   const { data } = await client.put('/settings/storage', input);
   return data;

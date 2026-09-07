@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Form, Input, InputNumber, Modal, Select, Switch, message } from 'antd';
+import { isAxiosError } from 'axios';
 
 import * as api from '../api';
 import type { Device, DeviceInput } from '../api/types';
@@ -31,7 +32,7 @@ export default function DeviceForm({
           port: 554,
           onvif_port: 80,
           ptz_enabled: false,
-          record_enabled: true,
+          record_enabled: false,
           enabled: true,
           ip: '',
           username: '',
@@ -54,7 +55,8 @@ export default function DeviceForm({
       message.success('保存成功');
       onSuccess();
     } catch (err) {
-      message.error('保存失败');
+      const detail = isAxiosError(err) ? err.response?.data?.detail : undefined;
+      message.error(typeof detail === 'string' ? detail : '保存失败');
     }
   };
 
@@ -113,7 +115,12 @@ export default function DeviceForm({
           <Form.Item name="ptz_enabled" label="启用云台" valuePropName="checked">
             <Switch />
           </Form.Item>
-          <Form.Item name="record_enabled" label="启用录像" valuePropName="checked">
+          <Form.Item
+            name="record_enabled"
+            label="启用录像"
+            valuePropName="checked"
+            tooltip="开启后自动保存录像。关闭后停止录制，并禁止实时预览中的手动录像；历史录像仍可回放。"
+          >
             <Switch />
           </Form.Item>
           <Form.Item name="enabled" label="启用设备" valuePropName="checked">

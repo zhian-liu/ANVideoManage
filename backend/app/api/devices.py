@@ -61,7 +61,8 @@ async def update_device(
         setattr(device, key, value)
     await db.commit()
     await db.refresh(device)
-    await apply_stream(device)
+    if not await apply_stream(device, replace=True):
+        raise HTTPException(status_code=502, detail="设备配置已保存，但流媒体同步失败，请检查流媒体服务后重试")
     return device
 
 

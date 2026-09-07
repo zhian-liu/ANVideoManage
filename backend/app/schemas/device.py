@@ -14,7 +14,7 @@ class DeviceBase(BaseModel):
     rtsp_url: str = ""
     onvif_port: int = 80
     ptz_enabled: bool = False
-    record_enabled: bool = True
+    record_enabled: bool = False
     enabled: bool = True
 
 

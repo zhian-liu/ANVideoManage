@@ -42,6 +42,10 @@ async def stream_info(device_id: int, db: AsyncSession = Depends(get_db)):
         await apply_stream(device)
         online = stream_key(device.id) in await zlm.online_streams()
     recording = await zlm.is_recording(device.id) if online else False
+    if recording and (not device.enabled or not device.record_enabled):
+        await apply_stream(device, replace=True)
+        online = stream_key(device.id) in await zlm.online_streams()
+        recording = await zlm.is_recording(device.id) if online else False
     return {
         "device_id": device.id,
         "online": online,
@@ -67,6 +71,8 @@ async def stream_protocols(device_id: int, db: AsyncSession = Depends(get_db)):
 @router.post("/{device_id}/start")
 async def start_stream(device_id: int, db: AsyncSession = Depends(get_db)):
     device = await _get_device(device_id, db)
+    if not device.enabled:
+        raise HTTPException(status_code=403, detail="设备未启用")
     adapter = get_adapter(device.access_type)
     rtsp = await adapter.resolve_stream(device)
     if not rtsp:
@@ -86,6 +92,10 @@ async def stop_stream(device_id: int, db: AsyncSession = Depends(get_db)):
 @router.post("/{device_id}/record/start")
 async def start_record(device_id: int, db: AsyncSession = Depends(get_db)):
     device = await _get_device(device_id, db)
+    if not device.enabled:
+        raise HTTPException(status_code=403, detail="设备未启用，无法开始录像")
+    if not device.record_enabled:
+        raise HTTPException(status_code=403, detail="此设备未启用录像，请先在设备管理中开启“启用录像”")
     online = stream_key(device.id) in await zlm.online_streams()
     if not online:
         adapter = get_adapter(device.access_type)
