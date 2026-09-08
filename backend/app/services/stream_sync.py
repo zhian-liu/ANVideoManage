@@ -7,6 +7,7 @@ from sqlalchemy import or_, select
 from app.adapters.registry import get_adapter
 from app.database import SessionLocal
 from app.models import Device
+from app.observability import capture_exception
 from app.services.zlmediakit import stream_key, zlm
 
 logger = logging.getLogger(__name__)
@@ -31,8 +32,9 @@ async def apply_stream(device: Device, *, replace: bool = False) -> bool:
         if not rtsp:
             return False
         return await zlm.add_stream_proxy(device.id, rtsp, enable_mp4=device.record_enabled)
-    except Exception:
-        logger.warning("Could not synchronize stream for device %s", device.id)
+    except Exception as exc:
+        logger.exception("Could not synchronize stream for device %s", device.id)
+        capture_exception(exc)
         return False
 
 
@@ -60,6 +62,7 @@ async def run_recording_policy() -> None:
     while True:
         try:
             await reconcile_disabled_recordings()
-        except Exception:
-            logger.warning("Could not reconcile recording switches; will retry")
+        except Exception as exc:
+            logger.exception("Could not reconcile recording switches; will retry")
+            capture_exception(exc)
         await asyncio.sleep(RECORDING_POLICY_INTERVAL_SECONDS)

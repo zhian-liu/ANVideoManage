@@ -113,6 +113,9 @@ Copy-Item .env.example .env  # 按需修改，尤其是 ZLM_API_BASE / ZLM_API_S
 python run.py
 ```
 
+如需上报后端崩溃，在 `backend/.env` 中填写 `SENTRY_DSN`；留空表示关闭。
+可通过 `SENTRY_ENVIRONMENT` 区分环境，`SENTRY_TRACES_SAMPLE_RATE` 默认为 `0`，仅进行错误上报。
+
 不使用激活脚本时，可以直接调用虚拟环境解释器：
 
 ```powershell
@@ -131,6 +134,8 @@ npm run dev
 ```
 
 浏览器打开 http://localhost:5173 ，使用 `admin / admin123` 登录。
+
+前端上报需要在 `frontend/.env` 中填写 `VITE_SENTRY_DSN`，然后重新执行 `npm run build` 或重启 Vite。
 
 ### 4. 一键重启开发服务（Windows）
 

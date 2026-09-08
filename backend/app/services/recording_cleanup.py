@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import SessionLocal
 from app.models import Recording
+from app.observability import capture_exception
 from app.services.storage import get_recording_retention_days
 
 logger = logging.getLogger(__name__)
@@ -129,8 +130,9 @@ async def run_recording_cleanup(wakeup: asyncio.Event) -> None:
                 deleted = await cleanup_expired_recordings(db)
             if deleted:
                 logger.info("Removed %s expired recording indexes", deleted)
-        except Exception:
+        except Exception as exc:
             logger.exception("Recording cleanup failed; will retry")
+            capture_exception(exc)
         try:
             await asyncio.wait_for(wakeup.wait(), timeout=CLEANUP_INTERVAL_SECONDS)
         except asyncio.TimeoutError:

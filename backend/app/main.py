@@ -15,8 +15,11 @@ from app.config import settings
 from app.core.security import hash_password
 from app.database import Base, SessionLocal, engine
 from app.models import User
+from app.observability import capture_exception, init_sentry
 from app.services.recording_cleanup import run_recording_cleanup
 from app.services.stream_sync import run_recording_policy
+
+init_sentry()
 
 
 class SPAStaticFiles(StaticFiles):
@@ -48,37 +51,44 @@ def _ensure_sqlite_dir() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _ensure_sqlite_dir()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    # 种子默认管理员
-    async with SessionLocal() as session:
-        result = await session.execute(
-            select(User).where(User.username == settings.admin_username)
-        )
-        if result.scalar_one_or_none() is None:
-            session.add(
-                User(
-                    username=settings.admin_username,
-                    password_hash=hash_password(settings.admin_password),
-                    role="admin",
-                )
-            )
-            await session.commit()
-    app.state.recording_cleanup_wakeup = asyncio.Event()
-    cleanup_task = asyncio.create_task(
-        run_recording_cleanup(app.state.recording_cleanup_wakeup),
-        name="recording-cleanup",
-    )
-    policy_task = asyncio.create_task(run_recording_policy(), name="recording-policy")
+    cleanup_task = None
+    policy_task = None
     try:
+        _ensure_sqlite_dir()
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        # 种子默认管理员
+        async with SessionLocal() as session:
+            result = await session.execute(
+                select(User).where(User.username == settings.admin_username)
+            )
+            if result.scalar_one_or_none() is None:
+                session.add(
+                    User(
+                        username=settings.admin_username,
+                        password_hash=hash_password(settings.admin_password),
+                        role="admin",
+                    )
+                )
+                await session.commit()
+        app.state.recording_cleanup_wakeup = asyncio.Event()
+        cleanup_task = asyncio.create_task(
+            run_recording_cleanup(app.state.recording_cleanup_wakeup),
+            name="recording-cleanup",
+        )
+        policy_task = asyncio.create_task(run_recording_policy(), name="recording-policy")
         yield
+    except Exception as exc:
+        capture_exception(exc)
+        raise
     finally:
         for task in (cleanup_task, policy_task):
-            task.cancel()
+            if task is not None:
+                task.cancel()
         for task in (cleanup_task, policy_task):
-            with suppress(asyncio.CancelledError):
-                await task
+            if task is not None:
+                with suppress(asyncio.CancelledError):
+                    await task
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

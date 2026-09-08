@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     # 本后端地址（供 ZLMediaKit WebHook 回调）
     webhook_base: str = "http://127.0.0.1:8000"
 
+    # Sentry 崩溃上报；DSN 为空时保持关闭
+    sentry_dsn: str = ""
+    sentry_environment: str = "development"
+    sentry_traces_sample_rate: float = 0.0
+
 
 @lru_cache
 def get_settings() -> Settings:
