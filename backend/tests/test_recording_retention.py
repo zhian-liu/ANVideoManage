@@ -12,6 +12,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.api.recordings import router as recordings_router
 from app.api.settings import router as settings_router
 from app.api.zlm_hook import router as hook_router
 from app.core.deps import get_current_user
@@ -45,6 +46,7 @@ class RecordingRetentionTests(unittest.IsolatedAsyncioTestCase):
                 yield db
 
         self.app = FastAPI()
+        self.app.include_router(recordings_router)
         self.app.include_router(settings_router)
         self.app.include_router(hook_router)
         self.app.dependency_overrides[get_db] = test_db
@@ -101,6 +103,21 @@ class RecordingRetentionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.cleanup(), 0)
         self.assertTrue(old.exists())
         self.assertEqual(await self.remaining_names(), ["old.mp4"])
+
+    async def test_missing_files_are_removed_from_index_even_when_retention_disabled(self):
+        missing = await self.add_recording("manually-deleted.mp4")
+        missing.unlink()
+        self.assertEqual(await self.cleanup(), 1)
+        self.assertEqual(await self.remaining_names(), [])
+
+    async def test_delete_api_removes_index_when_file_is_already_missing(self):
+        missing = await self.add_recording("selected-delete.mp4")
+        missing.unlink()
+        async with self.sessions() as db:
+            recording_id = (await db.scalars(select(Recording.id))).one()
+        response = await self.client.delete(f"/api/recordings/{recording_id}")
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(await self.remaining_names(), [])
 
     async def test_expiry_uses_end_time_and_only_removes_indexed_files(self):
         await self.configure(7)

@@ -125,6 +125,10 @@ export async function listRecordings(params?: {
   return data;
 }
 
+export async function deleteRecording(id: number): Promise<void> {
+  await client.delete(`/recordings/${id}`);
+}
+
 export function recordingFileUrl(id: number): string {
   // <video> 标签无法携带 Authorization 头，改用 query 参数传令牌
   const token = localStorage.getItem('token') ?? '';

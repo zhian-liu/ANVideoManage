@@ -1,4 +1,16 @@
-import { Button, Card, DatePicker, Empty, List, Select, Space } from 'antd';
+import { DeleteOutlined } from '@ant-design/icons';
+import {
+  Button,
+  Card,
+  Checkbox,
+  DatePicker,
+  Empty,
+  List,
+  Modal,
+  Select,
+  Space,
+  message,
+} from 'antd';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import { useEffect, useState } from 'react';
@@ -13,6 +25,8 @@ export default function Playback() {
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [playing, setPlaying] = useState<Recording | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [deleting, setDeleting] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -29,10 +43,50 @@ export default function Playback() {
         params.end = range[1].toISOString();
       }
       setRecordings(await api.listRecordings(params));
+      setSelectedIds([]);
     } finally {
       setLoading(false);
     }
   };
+
+  const deleteSelected = async () => {
+    setDeleting(true);
+    try {
+      const results = await Promise.allSettled(
+        selectedIds.map((id) => api.deleteRecording(id))
+      );
+      const deletedIds = selectedIds.filter(
+        (_, index) => results[index].status === 'fulfilled'
+      );
+      const failedCount = results.length - deletedIds.length;
+      if (deletedIds.length > 0) {
+        setRecordings((current) => current.filter((r) => !deletedIds.includes(r.id)));
+        setSelectedIds((current) => current.filter((id) => !deletedIds.includes(id)));
+        if (playing && deletedIds.includes(playing.id)) setPlaying(null);
+        message.success(`已删除 ${deletedIds.length} 条录像`);
+      }
+      if (failedCount > 0) {
+        message.error(`${failedCount} 条录像删除失败，请稍后重试`);
+      }
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const confirmDeleteSelected = () => {
+    if (selectedIds.length === 0) return;
+    Modal.confirm({
+      title: `删除选中的 ${selectedIds.length} 条录像？`,
+      content: '录像文件和数据库记录都会删除，此操作不可恢复。',
+      okText: '删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: deleteSelected,
+    });
+  };
+
+  const allSelected = recordings.length > 0 && selectedIds.length === recordings.length;
+  const someSelected = selectedIds.length > 0 && !allSelected;
 
   const duration = (r: Recording) =>
     Math.max(
@@ -66,7 +120,32 @@ export default function Playback() {
       </Card>
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-        <Card title="录像列表" style={{ width: 380 }}>
+        <Card
+          title="录像列表"
+          style={{ width: 380 }}
+          extra={
+            <Space>
+              <Checkbox
+                checked={allSelected}
+                indeterminate={someSelected}
+                onChange={(event) =>
+                  setSelectedIds(event.target.checked ? recordings.map((r) => r.id) : [])
+                }
+              >
+                全选
+              </Checkbox>
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                disabled={selectedIds.length === 0}
+                loading={deleting}
+                onClick={confirmDeleteSelected}
+              >
+                删除选中
+              </Button>
+            </Space>
+          }
+        >
           <List
             dataSource={recordings}
             locale={{ emptyText: <Empty description="暂无录像，请调整查询条件" /> }}
@@ -78,6 +157,19 @@ export default function Playback() {
                   background: playing?.id === r.id ? '#e6f4ff' : undefined,
                 }}
               >
+                <Checkbox
+                  checked={selectedIds.includes(r.id)}
+                  aria-label={`选择${dayjs(r.start_time).format('YYYY-MM-DD HH:mm:ss')}录像`}
+                  onClick={(event) => event.stopPropagation()}
+                  onChange={(event) => {
+                    setSelectedIds((current) =>
+                      event.target.checked
+                        ? [...current, r.id]
+                        : current.filter((id) => id !== r.id)
+                    );
+                  }}
+                  style={{ marginRight: 8 }}
+                />
                 <List.Item.Meta
                   title={dayjs(r.start_time).format('YYYY-MM-DD HH:mm:ss')}
                   description={`时长 ${duration(r)} 秒 · ${(r.file_size / 1024 / 1024).toFixed(1)} MB`}

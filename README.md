@@ -132,7 +132,19 @@ npm run dev
 
 浏览器打开 http://localhost:5173 ，使用 `admin / admin123` 登录。
 
-### 4. 单独编译前端
+### 4. 一键重启开发服务（Windows）
+
+首次启动前，先按上面的步骤准备好 `backend\venv`、`backend\.env` 和 `frontend\node_modules`，并确保 ZLMediaKit 已运行。之后在项目根目录双击 `restart_dev.bat`，或在 PowerShell 执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\restart_dev.ps1
+```
+
+脚本只重启本项目的后端和前端：它会停止占用 `8000` 的 Uvicorn 进程和占用 `5173` 的 Vite 进程，再使用 `backend\venv\Scripts\python.exe` 启动后端、使用 `npm run dev` 启动前端。脚本会等待 `http://127.0.0.1:8000/api/health` 和 `http://127.0.0.1:5173/` 可访问后才退出；如果端口被其他程序占用，会直接报错并保留现场。启动输出写入根目录 `logs\`，ZLMediaKit 不会被脚本重启。
+
+启动后访问 http://127.0.0.1:5173 ，后端接口文档在 http://127.0.0.1:8000/docs 。
+
+### 5. 单独编译前端
 
 前端生产构建会生成 `frontend\dist`，后端打包和 FastAPI 静态托管都会使用该目录：
 
@@ -148,7 +160,7 @@ npm run build
 npm run preview
 ```
 
-### 5. 检查后端
+### 6. 检查后端
 
 后端是 Python 服务，不需要单独生成二进制即可运行。提交前可执行语法检查和接口启动检查：
 
@@ -161,7 +173,7 @@ venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 启动后访问 `http://127.0.0.1:8000/api/health`，应返回 `{"status":"ok"}`。需要停止服务时，在运行窗口按 `Ctrl+C`。
 
-### 6. Windows 打包
+### 7. Windows 打包
 
 在项目根目录双击 `packaging/package_windows.bat`，或执行：
 

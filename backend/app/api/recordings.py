@@ -61,6 +61,8 @@ async def delete_recording(
     try:
         Path(rec.file_path).unlink(missing_ok=True)
     except Exception:
+        # The database row must not survive a manual file deletion or a file
+        # that is already unavailable. Cleanup can retry the physical file.
         pass
     await db.delete(rec)
     await db.commit()
