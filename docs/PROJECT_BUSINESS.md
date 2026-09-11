@@ -5,8 +5,10 @@
 
 ## 1. 系统定位与整体架构
 
-平台用于统一管理支持 RTSP/ONVIF 的摄像机，提供设备管理、实时预览、多画面布局、抓拍、录像、录像回放和云台控制。
+平台统一管理 RTSP/ONVIF 和 GB/T 28181 摄像机，提供设备管理、实时预览、多画面布局、抓拍、平台本地录像和回放；云台控制目前由 ONVIF 实现。
 厂商云 API 与私有 SDK 已预留适配器入口，但当前版本没有实现具体厂商协议。
+
+国标一期使用 reSIProcate 处理 SIP、ZLMediaKit 接收 PS/RTP，完整设计、库调用、操作与验收记录见 [GB28181_PHASE1.md](GB28181_PHASE1.md)。
 
 ```text
 浏览器（React + mpegts.js）
@@ -22,15 +24,27 @@ ZLMediaKit（代理、协议输出、录像、抓图）
 
 ZLMediaKit ── WebHook ──> FastAPI
               on_stream_changed / on_record_mp4
+
+FastAPI ── 本机 HTTP ──> reSIProcate SIP 服务 ◀── SIP ──> 国标摄像机/NVR
+ZLMediaKit ◀── PS over RTP（UDP / TCP） ──────────────── 国标摄像机/NVR
 ```
 
 ### 1.1 一次实时播放的关键流程
 
 1. 前端进入实时预览页，调用 `GET /api/devices` 获取设备列表。
-2. 对启用设备调用 `GET /api/streams/{device_id}`。如果 ZLMediaKit 中没有对应流，后端会解析设备 RTSP 地址并调用 `addStreamProxy`。
+2. 对启用的 RTSP/ONVIF 设备调用 `GET /api/streams/{device_id}`。如果 ZLMediaKit 中没有对应流，后端会解析设备 RTSP 地址并调用 `addStreamProxy`。
 3. 后端返回 HTTP-TS、HTTP-FLV 和 HLS 地址。前端 `VideoPlayer` 优先使用 HTTP-TS，通过 `mpegts.js` 写入 MSE；播放出错时回退到 HTTP-FLV。
 4. ZLMediaKit 将源流注册为 `live/device_{id}`。同一个 `device_{id}` 可以被多个窗口使用，只有没有窗口、详情弹窗和录像任务引用时前端才会请求停止代理。
-5. ZLMediaKit 通过 `on_stream_changed` 回调更新设备在线状态。
+5. ZLMediaKit 通过 `on_stream_changed` 回调更新 RTSP/ONVIF 设备在线状态。
+
+### 1.2 国标注册与点播流程
+
+1. 管理员在「国标接入」保存平台配置、预置设备编码和注册密码；FastAPI 启动并管理 C++ SIP 服务。
+2. reSIProcate 处理 REGISTER / Digest 和 UDP/TCP 事务，后端消费注册、心跳事件并自动查询 DeviceInfo / Catalog。
+3. 目录中的视频通道映射为现有 `Device(access_type="gb28181")`；分批目录以 SN 关联、去重，收齐后才标记缺失通道。
+4. 实时页只为可见国标通道申请播放租约。后端调用 `openRtpServer` 后发送 INVITE，处理 ACK 并等待 ZLM 媒体注册；视频仍使用 `<ZLM_APP>/device_<id>`。
+5. 租约 45 秒过期、前端每 15 秒续约。关闭最后一个观看租约且没有录像需求时，发送 BYE/CANCEL 并关闭 RTP 接收资源；异常由后台巡检重试。
+6. 国标在线状态来自注册、心跳和目录，不以是否正在出流判断。录像沿用本地 MP4/索引链路，手动暂停单独持久化。
 
 ## 2. 仓库目录与职责
 
@@ -60,6 +74,8 @@ frontend/                        React + TypeScript 前端
   src/hooks/                     动画和交互 Hook
 config/zlmediakit.config.ini    ZLMediaKit 关键配置模板
 packaging/                       Windows 打包脚本（PyInstaller + Inno Setup）
+native/gb28181/                  C++ SIP 服务、固定依赖构建与协议/媒体测试
+docs/GB28181_PHASE1.md           国标一期流程、库分工、部署和验收
 ```
 
 ## 3. 后端业务与代码清单
@@ -68,7 +84,7 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 
 | 文件 | 职责 |
 | --- | --- |
-| `backend/app/main.py` | 创建 FastAPI 应用；启动时创建数据库表并种子默认管理员，启停录像清理后台任务；挂载所有路由；在打包版本中托管 `frontend/dist`；提供 `/api/health`。 |
+| `backend/app/main.py` | 创建 FastAPI 应用；建表、种子默认管理员，启停录像清理和国标运行时；挂载路由，在打包版本中托管 `frontend/dist`；提供 `/api/health`。 |
 | `backend/app/config.py` | `Settings` 配置类，读取 `.env`；包含 JWT、SQLite、ZLMediaKit API/端口、WebHook 地址和默认录像/抓拍目录。 |
 | `backend/app/database.py` | 创建 SQLAlchemy 异步引擎、`SessionLocal` 和 `get_db` 依赖。默认数据库为 `backend/data/app.db`（以启动工作目录为相对基准）。 |
 | `backend/app/core/security.py` | bcrypt 密码哈希、密码校验、JWT 创建和解析。 |
@@ -86,6 +102,7 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `backend/app/models/device.py` | `devices` 表；设备名称、厂商、接入方式、IP/端口、账号密码、RTSP 地址、ONVIF 端口、PTZ/录像/启用开关和在线状态。 |
 | `backend/app/models/recording.py` | `recordings` 表；设备、开始/结束时间、ZLMediaKit 文件路径/名称/大小。 |
 | `backend/app/models/setting.py` | `app_settings` 表；以键值形式保存管理界面修改的录像、抓拍目录和录像保留天数。 |
+| `backend/app/models/gb28181.py` | `gb_devices` 注册凭据与心跳、`gb_channels` 目录和 Device 映射/录像暂停状态、`gb_stream_sessions` SIP/RTP 分配意图及清理状态。新增表不依赖对旧 Device 表自动增列。 |
 | `backend/app/models/__init__.py` | 统一导出模型，确保建表时被 SQLAlchemy 导入。 |
 
 ### 3.3 摄像机适配器
@@ -94,6 +111,7 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | --- | --- |
 | `backend/app/adapters/base.py` | `CameraAdapter` 抽象接口：`resolve_stream`，以及可选的 PTZ、变焦、抓拍能力。 |
 | `backend/app/adapters/onvif.py` | 当前已实现的 RTSP/ONVIF 适配器。优先使用设备的 `rtsp_url`；否则调用 ONVIF `GetStreamUri`；再失败时回退到通用 RTSP 路径。PTZ 使用 `ContinuousMove`/`Stop`，抓拍使用 `GetSnapshotUri`。同步 ONVIF 调用放入线程池。 |
+| `backend/app/adapters/gb28181.py` | 国标通过 SIP 点播，不解析摄像机 RTSP 地址；不支持的国标 PTZ 不回退 ONVIF。抓拍在流路由中申请临时租约后读取 ZLM 输出。 |
 | `backend/app/adapters/cloud.py` | 厂商云 API 模板，当前抛出 `NotImplementedError`。 |
 | `backend/app/adapters/sdk.py` | 厂商私有 SDK 模板，当前抛出 `NotImplementedError`。 |
 | `backend/app/adapters/registry.py` | 按 `access_type` 选择适配器；可通过 `register_adapter` 扩展新厂商。 |
@@ -106,6 +124,10 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `backend/app/services/stream_sync.py` | `apply_stream`：新增代理时传入设备录像开关；修改配置先停止旧录像并删除旧代理，再重建代理，避免 `addStreamProxy` 对已存在代理拒绝更新。启动后及每分钟校正关闭录像设备的遗留录制状态。 |
 | `backend/app/services/storage.py` | 读取/保存 `app_settings` 中的存储路径和录像保留天数；将抓拍 JPEG 写入日期目录；将 ZLMediaKit 完成的 MP4 分片移入自定义录像目录，跨磁盘时复制成功后移除源文件。 |
 | `backend/app/services/recording_cleanup.py` | 启动、保存设置后和每小时清理过期录像；分批删除已完成录像文件与索引，文件删除失败时保留索引供下次重试。 |
+| `backend/app/services/gb_protocol.py` | XML 编解码/校验、目录条目、SSRC 分配和 PS/RTP SDP。 |
+| `backend/app/services/gb_catalog.py` | 国标配置持久化、注册/通道在线计算、目录批次应用与完整性判断。 |
+| `backend/app/services/gb_gateway.py` | 启停原生 SIP 子进程、回环 HTTP 控制与内部随机令牌。 |
+| `backend/app/services/gb_runtime.py` | 处理 SIP 事件、目录查询、点播互斥、播放租约、录像策略、超时和重启清理。 |
 
 ### 3.5 HTTP 路由文件
 
@@ -118,6 +140,7 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `backend/app/api/ptz.py` | `/api/devices` | PTZ 移动、变焦和停止。 |
 | `backend/app/api/settings.py` | `/api/settings` | 设置页读取网络信息，修改录像/抓拍存储目录和录像保留天数。 |
 | `backend/app/api/zlm_hook.py` | `/api/zlm/hook` | 接收 ZLMediaKit 流状态和录像完成 WebHook；不要求用户登录。 |
+| `backend/app/api/gb28181.py` | `/api/gb28181` | 平台配置、预置注册设备、目录同步和通道查询；配置/凭据写操作要求管理员。 |
 
 ## 4. 后端 HTTP 接口清单
 
@@ -141,6 +164,8 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `PUT` | `/api/devices/{id}` | `api.updateDevice`，`DeviceForm` | 更新设备并重新同步流代理。 |
 | `DELETE` | `/api/devices/{id}` | `api.deleteDevice`，`Devices` | 删除 ZLMediaKit 代理、关联录像索引和设备。 |
 
+国标通道只能由目录生成，不能经普通 CRUD 创建、转换接入类型或删除；可编辑名称、厂商、启用和录像开关。国标注册凭据通过专用接口维护。
+
 ### 4.3 实时流、抓拍和录像
 
 | 方法 | 路径 | 前端调用 | 说明 |
@@ -154,6 +179,8 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `GET` | `/api/streams/{id}/record/status` | `api.getRecordingStatus`（保留接口） | 查询 ZLMediaKit MP4 录像状态。 |
 | `GET` | `/api/streams/{id}/snapshot` | `api.captureSnapshot`，`Live` | 先尝试 ONVIF `GetSnapshotUri`，失败后调用 ZLMediaKit `getSnap` 生成 JPEG。返回 `image/jpeg`。 |
 | `POST` | `/api/streams/{id}/snapshot/save` | `api.saveSnapshot`，`Live` | 获取 JPEG 后按设置页中的抓拍目录保存，并返回实际文件路径。 |
+
+上表自动拉流和删除代理行为针对 RTSP/ONVIF。国标的流信息/协议地址为只读，点播使用下方播放租约接口；`start` 返回新租约，`stop` 仅在没有观看者和录像需求时停止。国标抓拍申请临时租约并使用 ZLM 输出 RTSP，录像控制保存手动暂停状态。
 
 ### 4.4 录像回放与文件
 
@@ -188,6 +215,20 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `POST` | `/api/zlm/hook/on_stream_changed` | 流上线或下线 | 从 `stream=device_{id}` 解析设备 ID，更新 `Device.status`。 |
 | `POST` | `/api/zlm/hook/on_record_mp4` | MP4 分片完成 | 从回调字段读取开始时间、时长、文件路径、文件名和大小；按配置归档文件后写入 `Recording` 索引。 |
 
+国标的媒体上下线回调不修改 SIP 注册在线状态；MP4 回调复用相同录像归档和索引逻辑。
+
+### 4.8 国标配置、目录与播放租约
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| `GET/PUT` | `/api/gb28181/config` | 配置与服务状态；PUT 要求管理员并重启国标信令 |
+| `GET/POST` | `/api/gb28181/devices` | 注册设备列表 / 预置设备；POST 要求管理员，输出不含密码 |
+| `PUT` | `/api/gb28181/devices/{id}` | 管理员修改设备名、密码或启用状态 |
+| `POST` | `/api/gb28181/devices/{id}/catalog` | 管理员查询目录 |
+| `GET` | `/api/gb28181/devices/{id}/channels` | 查询目录节点及可播放 Device ID |
+| `POST` | `/api/streams/{id}/lease` | 登录用户获取/续期租约；请求 `{"lease_id": null}` 表示新建 |
+| `DELETE` | `/api/streams/{id}/lease/{lease_id}` | 释放本用户的租约，不能释放其他用户租约 |
+
 ## 5. 前端业务与代码清单
 
 ### 5.1 入口、路由和状态
@@ -195,7 +236,7 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | 文件 | 职责 |
 | --- | --- |
 | `frontend/src/main.tsx` | 组合 `ThemeProvider`、`BrowserRouter`、`AuthProvider`，挂载 React 应用。 |
-| `frontend/src/App.tsx` | 路由表和登录保护：设备总览 `/`、实时预览 `/live`、录像回放 `/playback`、设备管理 `/devices`、系统设置 `/settings`。 |
+| `frontend/src/App.tsx` | 路由表和登录保护：设备总览 `/`、实时预览 `/live`、录像回放 `/playback`、设备管理 `/devices`、国标接入 `/gb28181`、系统设置 `/settings`。 |
 | `frontend/src/store/auth.tsx` | 保存 JWT 到 `localStorage`，登录后加载 `/auth/me`，失效时清除令牌。 |
 | `frontend/src/layouts/MainLayout.tsx` | 侧边菜单、顶部用户区、主题切换和页面内容容器。 |
 
@@ -217,6 +258,8 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `frontend/src/pages/Live.tsx` | 设备树、单/4/9/16 窗口、窗口选中、同设备多窗口播放、暂停、关闭、抓拍、录像和详情弹窗；调用流信息、停止流、抓拍、录像和 PTZ API。 |
 | `frontend/src/pages/Playback.tsx` | 设备/时间范围筛选录像，选择录像后播放；调用 `api.listDevices`、`api.listRecordings` 和 `api.recordingFileUrl`。 |
 | `frontend/src/pages/Settings.tsx` | 设置页的基础设置、网络设置和流媒体服务标签；基础设置调用 `api.getSettings`/`api.updateStorageSettings` 修改录像、抓拍目录，选择永久保存或自定义保留天数；恢复默认会选回永久保存。 |
+| `frontend/src/pages/Gb28181.tsx` | 平台配置、预置注册设备、注册状态、目录同步和通道预览入口。 |
+| `frontend/src/hooks/useGbPlayback.ts` | 可见国标通道的播放租约获取、续约和释放，多窗口共享一条本页租约。 |
 | `frontend/src/components/DeviceForm.tsx` | 添加/编辑设备表单，调用 `api.createDevice` 或 `api.updateDevice`。 |
 | `frontend/src/components/DirectoryPickerInput.tsx` | 录像、抓拍目录共用的路径输入框；点击文件夹图标打开选择弹窗，支持磁盘、上级目录、输入路径和分页浏览；确认回填表单，页面保存后生效。 |
 | `frontend/src/components/VideoPlayer.tsx` | 封装 `<video>` 与 `mpegts.js`；实时流使用 MSE，优先 TS、失败回退 FLV；回放使用原生 MP4。支持暂停、静音和错误回调。 |
@@ -251,6 +294,8 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `[protocol] mp4_max_second` | `300` | MP4 分片时长，分片完成后触发 WebHook。 |
 | `[protocol] mp4_save_path` | `./www/record` | 录像文件保存目录，路径相对于 ZLMediaKit 运行目录。 |
 | `[protocol] hls_save_path` | `./www/hls` | HLS 分片保存目录。 |
+| `[rtp_proxy] port / port_range` | `0 / 30000-35000` | 关闭固定 RTP 入口，逐通道动态分配接收端口。 |
+| `[rtp_proxy] timeoutSec / ps_pt` | `150 / 96` | RTP 超时与 PS 负载类型；后端按较短的业务超时主动回收失败点播。 |
 
 ### 6.2 后端实际调用的 ZLMediaKit REST API
 
@@ -265,6 +310,9 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 | `GET /index/api/isRecording` | `ZLMClient.is_recording` | 查询 MP4 录像状态。 |
 | `GET /index/api/getSnap` | `ZLMClient.get_snapshot` | 从源 RTSP 生成 JPEG 抓图；需要 ZLMediaKit 能找到 `ffmpeg.bin`。 |
 | `GET /index/api/getMediaList` | `ZLMClient.online_streams` | 查询当前媒体源，后端据此计算设备在线状态。 |
+| `GET /index/api/openRtpServer` | `ZLMClient.open_rtp_server` | 国标按通道、SSRC 创建 UDP/TCP 被动接收端口，使用同一 app/stream 命名。 |
+| `GET /index/api/closeRtpServer` | `ZLMClient.close_rtp_server` | 释放国标 RTP 资源，重复关闭幂等。 |
+| `GET /index/api/getRtpInfo` | `ZLMClient.get_rtp_info` | 查询国标 RTP 媒体接收信息；接收端口和媒体上线是不同状态。 |
 
 ### 6.3 代理流地址
 
@@ -311,7 +359,7 @@ packaging/                       Windows 打包脚本（PyInstaller + Inno Setup
 
 ### 7.3 在线状态
 
-ZLMediaKit 的 `on_stream_changed` 回调负责更新数据库状态；设备列表接口还会通过 `getMediaList` 实时校验。设备未启用时状态为 `unknown`，启用但没有对应媒体源时为 `offline`。
+RTSP/ONVIF 通过 `on_stream_changed` 回调更新数据库状态，设备列表通过 `getMediaList` 实时校验；未启用为 `unknown`，启用但没有媒体源为 `offline`。国标按设备注册有效期、心跳、设备启停和目录通道状态计算在线，媒体是否可播放另由流接口返回。
 
 ## 8. 配置、密钥和部署注意事项
 
@@ -321,3 +369,6 @@ ZLMediaKit 的 `on_stream_changed` 回调负责更新数据库状态；设备列
 - `WEBHOOK_BASE` 必须是 ZLMediaKit 能访问到的后端地址。后端端口默认为 `8000`，前端开发服务器默认为 `5173`。
 - Windows 打包入口为 `backend/packaged_main.py`；构建后目标机不需要安装 Python/Node，但仍需要单独运行可访问的 ZLMediaKit（或将其一并放入安装包并配置启动脚本）。
 - 浏览器实时播放的主链路是 HTTP-TS + MSE，H.265 最终解码依赖 Windows 和 Chrome/Edge 的 HEVC 能力；当前版本不通过 FFmpeg 转码。
+- 国标默认关闭；`GB28181_BINARY` 指定 C++ 产物（留空自动寻找），`GB28181_HTTP_PORT` 默认 18081 且仅监听回环，`GB28181_RUNTIME_DIR` 默认 `./data/gb28181`。平台编码、网络和超时通过管理页保存到数据库。
+- 一个后端进程管理一套国标 SIP/RTP 会话，不能使用多个 Uvicorn worker 同时控制同一 ZLM app。SIP 支持 UDP/TCP，媒体模式独立配置；一期只接视频轨，国标云台、对讲、告警、级联和设备端历史录像属于后续范围。
+- 国标构建与运行验证见专门文档；本次已通过模拟 NVR 的实际 SIP/媒体联调，不能替代真机、浏览器和长期稳定性验收。

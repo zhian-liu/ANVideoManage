@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -6,7 +7,7 @@ from pydantic import BaseModel, Field
 class DeviceBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
     vendor: str = "generic"
-    access_type: str = "onvif"
+    access_type: Literal["onvif", "cloud", "sdk", "gb28181"] = "onvif"
     ip: str = ""
     port: int = 554
     username: str = ""
@@ -25,7 +26,7 @@ class DeviceCreate(DeviceBase):
 class DeviceUpdate(BaseModel):
     name: str | None = None
     vendor: str | None = None
-    access_type: str | None = None
+    access_type: Literal["onvif", "cloud", "sdk", "gb28181"] | None = None
     ip: str | None = None
     port: int | None = None
     username: str | None = None

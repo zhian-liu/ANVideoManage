@@ -270,7 +270,7 @@ export default function Dashboard() {
                     color: theme.primary.main,
                   }}
                 >
-                  {v === 'onvif' ? 'RTSP/ONVIF' : v}
+                  {v === 'onvif' ? 'RTSP/ONVIF' : v === 'gb28181' ? '国标 GB28181' : v}
                 </Tag>
               ),
             },

@@ -12,6 +12,8 @@ $pyDistRoot = Join-Path $releaseRoot "pyinstaller-dist"
 $pyBuildRoot = Join-Path $releaseRoot "pyinstaller-build"
 $setupPath = Join-Path $releaseRoot "VideoManageSetup.exe"
 $zlmSource = Join-Path $backendRoot "ZLMediaKit\release\windows\Debug\Release"
+$gbBuildRoot = Join-Path $projectRoot "native\gb28181\build"
+$gbExecutable = Join-Path $gbBuildRoot "bin\Release\gb28181-sip.exe"
 $isccCandidates = @(
     "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
     "C:\Program Files\Inno Setup 6\ISCC.exe"
@@ -52,6 +54,12 @@ if (-not (Test-Path $pythonExe)) {
     Invoke-Checked "py" @("-3.11", "-m", "venv", $pythonExe.Replace("\Scripts\python.exe", ""))
 }
 
+Write-Host "Building GB28181 SIP service..."
+& (Join-Path $projectRoot "native\gb28181\build.ps1")
+if (-not (Test-Path -LiteralPath $gbExecutable)) {
+    throw "GB28181 build did not produce gb28181-sip.exe"
+}
+
 Write-Host "Building frontend..."
 Push-Location $frontendRoot
 try {
@@ -90,12 +98,21 @@ if (-not (Test-Path (Join-Path $frontendRoot "dist\index.html"))) {
 }
 
 Write-Host "Preparing installer staging directory..."
+$releasePrefix = [IO.Path]::GetFullPath($releaseRoot).TrimEnd('\') + '\'
+foreach ($cleanupTarget in @($stagingRoot, $setupPath)) {
+    $resolvedCleanupTarget = [IO.Path]::GetFullPath($cleanupTarget)
+    if (-not $resolvedCleanupTarget.StartsWith($releasePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing cleanup outside the project release directory: $resolvedCleanupTarget"
+    }
+}
 if (Test-Path $stagingRoot) { Remove-Item -LiteralPath $stagingRoot -Recurse -Force }
 if (Test-Path $setupPath) { Remove-Item -LiteralPath $setupPath -Force }
 
 $null = New-Item -ItemType Directory -Path $stagingRoot -Force
 $null = New-Item -ItemType Directory -Path (Join-Path $stagingRoot "backend") -Force
 $null = New-Item -ItemType Directory -Path (Join-Path $stagingRoot "frontend") -Force
+$null = New-Item -ItemType Directory -Path (Join-Path $stagingRoot "gb28181") -Force
+$null = New-Item -ItemType Directory -Path (Join-Path $stagingRoot "docs") -Force
 $null = New-Item -ItemType Directory -Path (Join-Path $stagingRoot "zlm\www\record") -Force
 $null = New-Item -ItemType Directory -Path (Join-Path $stagingRoot "zlm\www\hls") -Force
 $null = New-Item -ItemType Directory -Path (Join-Path $stagingRoot "zlm\www\snap") -Force
@@ -106,6 +123,9 @@ Copy-Item -LiteralPath (Join-Path $frontendRoot "dist") -Destination (Join-Path 
 Copy-Item -LiteralPath (Join-Path $zlmSource "MediaServer.exe") -Destination (Join-Path $stagingRoot "zlm")
 Get-ChildItem -LiteralPath $zlmSource -Filter "*.dll" -File | Copy-Item -Destination (Join-Path $stagingRoot "zlm")
 Copy-Item -LiteralPath (Join-Path $projectRoot "config\zlmediakit.config.ini") -Destination (Join-Path $stagingRoot "zlm\config.ini")
+Copy-Item -LiteralPath $gbExecutable -Destination (Join-Path $stagingRoot "gb28181")
+Copy-Item -LiteralPath (Join-Path $gbBuildRoot "licenses") -Destination (Join-Path $stagingRoot "gb28181") -Recurse
+Copy-Item -LiteralPath (Join-Path $projectRoot "docs\GB28181_PHASE1.md") -Destination (Join-Path $stagingRoot "docs")
 Copy-Item -LiteralPath (Join-Path $projectRoot "README.md") -Destination $stagingRoot
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "PACKAGE_README.txt") -Destination $stagingRoot
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "start_windows.bat") -Destination $stagingRoot

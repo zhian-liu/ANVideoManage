@@ -11,6 +11,12 @@ import type {
   StreamProtocolsInfo,
   TokenResponse,
   User,
+  GbConfig,
+  GbConfigResponse,
+  GbDevice,
+  GbDeviceInput,
+  GbChannel,
+  GbLease,
 } from './types';
 
 export async function login(
@@ -64,6 +70,42 @@ export async function startStream(id: number): Promise<void> {
 
 export async function stopStream(id: number): Promise<void> {
   await client.post(`/streams/${id}/stop`);
+}
+
+export async function getGbConfig(): Promise<GbConfigResponse> {
+  return (await client.get('/gb28181/config')).data;
+}
+
+export async function saveGbConfig(input: GbConfig): Promise<GbConfigResponse> {
+  return (await client.put('/gb28181/config', input, { timeout: 90000 })).data;
+}
+
+export async function listGbDevices(): Promise<GbDevice[]> {
+  return (await client.get('/gb28181/devices')).data;
+}
+
+export async function createGbDevice(input: GbDeviceInput): Promise<GbDevice> {
+  return (await client.post('/gb28181/devices', input)).data;
+}
+
+export async function updateGbDevice(id: string, input: Partial<Omit<GbDeviceInput, 'id'>>): Promise<GbDevice> {
+  return (await client.put(`/gb28181/devices/${id}`, input)).data;
+}
+
+export async function syncGbCatalog(id: string): Promise<void> {
+  await client.post(`/gb28181/devices/${id}/catalog`);
+}
+
+export async function listGbChannels(id: string): Promise<GbChannel[]> {
+  return (await client.get(`/gb28181/devices/${id}/channels`)).data;
+}
+
+export async function acquireGbLease(id: number, leaseId?: string): Promise<GbLease> {
+  return (await client.post(`/streams/${id}/lease`, { lease_id: leaseId }, { timeout: 135000 })).data;
+}
+
+export async function releaseGbLease(id: number, leaseId: string): Promise<void> {
+  await client.delete(`/streams/${id}/lease/${leaseId}`);
 }
 
 export async function captureSnapshot(id: number): Promise<Blob> {

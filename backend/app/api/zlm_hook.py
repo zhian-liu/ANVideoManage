@@ -25,7 +25,7 @@ async def on_stream_changed(body: dict, db: AsyncSession = Depends(get_db)):
     device_id = _device_id_from_stream(body.get("stream"))
     if device_id is not None:
         device = await db.get(Device, device_id)
-        if device is not None:
+        if device is not None and device.access_type != "gb28181":
             device.status = "online" if bool(body.get("regist")) else "offline"
             await db.commit()
     return {"code": 0}

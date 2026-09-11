@@ -1,6 +1,8 @@
 # 视频监控管理平台
 
-统一接入各厂家家庭摄像机的 Web 管理平台。支持 **实时预览（多画面宫格）**、**录像存储与回放**、**云台 PTZ 控制**。
+统一管理 RTSP/ONVIF 和 GB/T 28181 摄像机的 Web 平台。支持 **实时预览（多画面宫格）**、**录像存储与回放**、**ONVIF 云台 PTZ 控制**。
+
+国标一期的库分工、完整接入流程、业务实现和验证记录见 [GB/T 28181 一期接入文档](docs/GB28181_PHASE1.md)。
 
 ## 技术栈
 
@@ -8,8 +10,9 @@
 |----|------|
 | 后端 | Python 3.11+ · FastAPI · SQLAlchemy(async) · SQLite |
 | 前端 | React 18 · TypeScript · Vite · Ant Design 5 · mpegts.js |
-| 流媒体 | ZLMediaKit（拉流 / 转码 / MP4 录像） |
-| 摄像机接入 | RTSP/ONVIF（已实现）+ 厂商云 API / 私有 SDK（预留适配器） |
+| 流媒体 | ZLMediaKit（RTSP 拉流 / RTP 收流 / 解封装与转协议 / MP4 录像） |
+| 国标信令 | C++17 + reSIProcate 1.14.0，后端管理独立 SIP 进程 |
+| 摄像机接入 | RTSP/ONVIF、GB/T 28181 一期；厂商云 API / 私有 SDK 预留适配器 |
 
 ## 编译环境
 
@@ -21,8 +24,8 @@ Windows 开发和打包建议使用 64 位环境：
 | Python | 3.11 或更高 | 后端运行、语法检查和 PyInstaller 打包 |
 | Node.js | 18 LTS 或更高 | 前端依赖安装和 Vite 构建 |
 | npm | 随 Node.js 安装 | 安装前端依赖 |
-| CMake | 3.20 或更高 | 生成 ZLMediaKit 工程 |
-| Visual Studio | 2019/2022，安装“使用 C++ 的桌面开发” | 编译 Windows 版 ZLMediaKit |
+| CMake | 3.24 或更高 | 生成 ZLMediaKit / 国标 SIP 工程 |
+| Visual Studio | 2022，安装“使用 C++ 的桌面开发” | 编译 Windows 版 ZLMediaKit 和国标 SIP 服务 |
 | Inno Setup | 6.x（仅打包需要） | 生成 `VideoManageSetup.exe` |
 
 ZLMediaKit 的 CMake 文件最低声明为 3.1.3，但 Windows 编译建议使用较新的 CMake 和 Visual Studio 2022。抓拍的后端回退方案还需要 FFmpeg；普通浏览器画面抓拍不依赖 FFmpeg。
@@ -50,6 +53,9 @@ git -C backend\ZLMediaKit submodule update --init --recursive
 浏览器(React) ──HTTP REST──▶ FastAPI ──REST API──▶ ZLMediaKit ──RTSP拉流──▶ 摄像机
       │                          │                        │
       └──HTTP-TS/HTTP-FLV/HLS────┘                        └──MP4录像 + WebHook回调──▶ 录像索引
+                                 │
+                                 └──本机 HTTP──▶ reSIProcate 服务 ◀──SIP──▶ 国标摄像机/NVR
+                                                      ZLMediaKit ◀──PS/RTP── 国标摄像机/NVR
 ```
 
 ## 目录结构
@@ -57,14 +63,16 @@ git -C backend\ZLMediaKit submodule update --init --recursive
 ```
 backend/            FastAPI 后端
   app/
-    api/            auth / devices / streams / recordings / ptz / settings / zlm_hook
-    adapters/       摄像机适配器（onvif 已实现，cloud/sdk 为模板）
+    api/            auth / devices / gb28181 / streams / recordings / ptz / settings / zlm_hook
+    adapters/       摄像机适配器（onvif / gb28181，cloud/sdk 为模板）
     core/           JWT / 鉴权依赖
-    models/         User / Device / Recording / AppSetting
-    services/       ZLMediaKit 客户端、流代理同步、文件存储
+    models/         User / Device / Recording / AppSetting / GbDevice / GbChannel / GbStreamSession
+    services/       ZLMediaKit、国标协议与会话、流同步、文件存储
     main.py         入口
 frontend/           React 前端
 config/             ZLMediaKit 配置
+native/gb28181/      reSIProcate SIP 服务、构建入口、协议与媒体联调测试
+docs/               系统业务说明与国标一期接入文档
 ```
 
 ## 启动步骤
@@ -186,7 +194,7 @@ venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 powershell -ExecutionPolicy Bypass -File .\packaging\package_windows.ps1
 ```
 
-脚本会依次执行 `npm run build`、安装 `packaging\requirements-build.txt`、使用 PyInstaller 将后端冻结为 `VideoManageBackend.exe`，复制 ZLMediaKit 运行文件，最后调用 Inno Setup 生成 `release\VideoManageSetup.exe`。构建机器需要已经准备好 `backend\ZLMediaKit\release\windows\Debug\Release\MediaServer.exe`。目标机器不需要安装 Python 或 Node.js，安装后通过桌面快捷方式启动即可。
+脚本会依次编译国标 SIP 服务、执行 `npm run build`、安装 `packaging\requirements-build.txt`、使用 PyInstaller 将后端冻结为 `VideoManageBackend.exe`，复制 ZLMediaKit、SIP 程序及许可文件，最后调用 Inno Setup 生成 `release\VideoManageSetup.exe`。构建机器需要 CMake / VS2022 C++，并准备好 `backend\ZLMediaKit\release\windows\Debug\Release\MediaServer.exe`。目标机器不需要安装 Python 或 Node.js，安装后通过桌面快捷方式启动即可。
 
 也可以双击：
 
@@ -203,10 +211,23 @@ release\installer-staging\             安装包临时目录
 release\VideoManageSetup.exe            Inno Setup 安装程序
 ```
 
+### 8. 国标接入（可选）
+
+国标默认关闭。在仓库根目录编译 SIP 服务：
+
+~~~powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\native\gb28181\build.ps1
+~~~
+
+确认运行中的 ZLMediaKit 已启用 RTP 代理，并应用配置模板中的 `[rtp_proxy]`。后端会自动管理 SIP 子进程；用管理员打开「国标接入」配置平台编码、域、SIP 和媒体地址，启用服务后预置设备编码/密码，再在摄像机或 NVR 上填写对应参数。注册成功后自动同步目录，视频通道进入设备列表并可预览。
+
+一期支持 SIP UDP/TCP、PS over RTP UDP/TCP 被动接收和视频本地录像。RTP 由 ZLMediaKit 接收；国标云台、设备端录像回放、对讲、告警订阅和级联尚未实现。已完成模拟设备的实际 SIP/媒体链路验证，真机兼容性仍需现场验收。详细构建、端口、排错和测试命令见 [国标接入文档](docs/GB28181_PHASE1.md)。
+
 ## 使用说明
 
 1. **添加设备**：进入「设备管理」→「添加设备」，填写名称，选择接入方式：
    - **RTSP/ONVIF**：填写 IP / RTSP 端口 / ONVIF 端口 / 用户名 / 密码；若已知 RTSP 地址可直接填入「RTSP 地址」列（优先使用）。
+   - **GB/T 28181**：在「国标接入」预置注册设备并同步目录，视频通道由目录生成，无需填写 RTSP 地址。
    - 厂商云 API / 私有 SDK 为预留，当前会提示未实现。
 2. **实时预览**：进入「实时预览」查看多画面宫格。每个窗口支持暂停、关闭、抓拍和开始/停止 MP4 录像；点击某一格放大并（若启用云台）显示云台控制。
 3. **录像回放**：进入「录像回放」选择设备与时间范围查询，点击列表项回放。
@@ -230,7 +251,8 @@ release\VideoManageSetup.exe            Inno Setup 安装程序
 - **手动录像**：开始/停止按钮调用 ZLMediaKit 的 `startRecord` / `stopRecord`（MP4 类型），
   不会删除共享的流代理，因此不会影响其他窗口播放。
 - **录像开关**：新建设备默认关闭录像；开启「启用录像」后自动保存录像，并允许实时预览中的手动录像。关闭时停止旧录像并按新配置重建流代理，手动录像接口也会拒绝启动。后端启动后及每分钟会校正遗留的异常录像状态；历史录像继续保留并按存储设置处理。
-- **状态**：设备在线状态由 `on_stream_changed` WebHook 更新，列表接口也会实时比对在线流。
+- **状态**：RTSP/ONVIF 在线状态通过 WebHook 与在线流校验；国标设备按注册、心跳及目录状态计算在线，未点播不表示设备离线。
+- **国标播放与录像**：可见通道申请并续期播放租约，多窗口共享同一 SIP/RTP 会话；关闭画面不会中断其他观看者或录像。手动暂停录像会保存在数据库中，后续预览或重连不会自动恢复录像。
 - **摄像机密码**：为连接摄像机，设备密码以明文存储于本地数据库（家庭内网场景可接受，生产建议加密）。
 
 ## 常见问题

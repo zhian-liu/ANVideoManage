@@ -151,6 +151,36 @@ class ZLMClient:
             r = await client.get(self._url(f"/index/api/delStreamProxy?key={key}"))
             return r.json().get("code") == 0
 
+    async def _rtp_api(self, method: str, device_id: int, **params) -> dict:
+        """RTP APIs preserve the same app/stream namespace as RTSP devices."""
+        params.update(vhost=DEFAULT_VHOST, app=settings.zlm_app, stream_id=stream_key(device_id))
+        if self.secret:
+            params["secret"] = self.secret
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(f"{self.base}/index/api/{method}", params=params)
+            response.raise_for_status()
+            result = response.json()
+        if result.get("code") != 0:
+            raise RuntimeError(f"ZLMediaKit {method} 失败，请检查 RTP 支持、端口和 API 配置")
+        return result
+
+    async def open_rtp_server(self, device_id: int, ssrc: int, tcp: bool = False) -> int:
+        result = await self._rtp_api(
+            "openRtpServer", device_id, port=0, tcp_mode=1 if tcp else 0,
+            ssrc=ssrc, only_track=2, re_use_port=0,
+        )
+        port = int(result.get("port", 0))
+        if not 0 < port <= 65535:
+            raise RuntimeError("ZLMediaKit 没有分配有效的 RTP 接收端口")
+        return port
+
+    async def close_rtp_server(self, device_id: int) -> None:
+        # ZLM reports code=0, hit=0 for an already-closed receiver.
+        await self._rtp_api("closeRtpServer", device_id)
+
+    async def get_rtp_info(self, device_id: int) -> dict:
+        return await self._rtp_api("getRtpInfo", device_id)
+
     async def start_record(self, device_id: int) -> bool:
         params = {
             "type": 1,

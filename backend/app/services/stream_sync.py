@@ -17,6 +17,10 @@ RECORDING_POLICY_INTERVAL_SECONDS = 60
 async def apply_stream(device: Device, *, replace: bool = False) -> bool:
     """Apply options to a new proxy; existing proxies must be replaced."""
     try:
+        if device.access_type == "gb28181":
+            from app.services.gb_runtime import gb_runtime
+            await gb_runtime.apply_device(device)
+            return True
         if replace or not device.enabled:
             try:
                 await zlm.stop_record(device.id)

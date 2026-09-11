@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from starlette.exceptions import HTTPException
 
-from app.api import auth, devices, ptz, recordings, settings as settings_api, streams, zlm_hook
+from app.api import auth, devices, gb28181, ptz, recordings, settings as settings_api, streams, zlm_hook
 from app.config import settings
 from app.core.security import hash_password
 from app.database import Base, SessionLocal, engine
@@ -18,6 +18,7 @@ from app.models import User
 from app.observability import capture_exception, init_sentry
 from app.services.recording_cleanup import run_recording_cleanup
 from app.services.stream_sync import run_recording_policy
+from app.services.gb_runtime import gb_runtime
 
 init_sentry()
 
@@ -53,6 +54,7 @@ def _ensure_sqlite_dir() -> None:
 async def lifespan(app: FastAPI):
     cleanup_task = None
     policy_task = None
+    gb_started = False
     try:
         _ensure_sqlite_dir()
         async with engine.begin() as conn:
@@ -77,11 +79,15 @@ async def lifespan(app: FastAPI):
             name="recording-cleanup",
         )
         policy_task = asyncio.create_task(run_recording_policy(), name="recording-policy")
+        await gb_runtime.start(SessionLocal)
+        gb_started = True
         yield
     except Exception as exc:
         capture_exception(exc)
         raise
     finally:
+        if gb_started:
+            await gb_runtime.close()
         for task in (cleanup_task, policy_task):
             if task is not None:
                 task.cancel()
@@ -108,6 +114,7 @@ app.include_router(recordings.router)
 app.include_router(ptz.router)
 app.include_router(settings_api.router)
 app.include_router(zlm_hook.router)
+app.include_router(gb28181.router)
 
 
 def _project_root() -> Path:

@@ -13,6 +13,7 @@ class Device(Base):
       - "onvif": RTSP/ONVIF 标准协议（MVP 完整支持）
       - "cloud": 厂商云 API（预留）
       - "sdk":   厂商私有 SDK（预留）
+      - "gb28181": 国标目录中的视频通道；注册身份保存在 gb_devices/gb_channels
     """
 
     __tablename__ = "devices"

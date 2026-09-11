@@ -7,6 +7,8 @@ from app.adapters.registry import get_adapter
 from app.core.deps import get_current_user
 from app.database import get_db
 from app.models import Device
+from app.schemas.gb28181 import GbLeaseRequest
+from app.services.gb_runtime import gb_runtime
 from app.services.stream_sync import apply_stream
 from app.services.storage import save_snapshot
 from app.services.zlmediakit import (
@@ -35,6 +37,8 @@ async def _get_device(device_id: int, db: AsyncSession) -> Device:
 @router.get("/{device_id}")
 async def stream_info(device_id: int, db: AsyncSession = Depends(get_db)):
     device = await _get_device(device_id, db)
+    if device.access_type == "gb28181":
+        return await gb_runtime.stream_info(device_id)
     online_streams = await zlm.online_streams()
     online = stream_key(device.id) in online_streams
     # 若流已因无观看被 ZLM 自动停止，则重新下发拉流
@@ -69,10 +73,12 @@ async def stream_protocols(device_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{device_id}/start")
-async def start_stream(device_id: int, db: AsyncSession = Depends(get_db)):
+async def start_stream(device_id: int, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
     device = await _get_device(device_id, db)
     if not device.enabled:
         raise HTTPException(status_code=403, detail="设备未启用")
+    if device.access_type == "gb28181":
+        return {"ok": True, **await gb_runtime.acquire_lease(device_id, user.id, None)}
     adapter = get_adapter(device.access_type)
     rtsp = await adapter.resolve_stream(device)
     if not rtsp:
@@ -84,8 +90,22 @@ async def start_stream(device_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("/{device_id}/stop")
 async def stop_stream(device_id: int, db: AsyncSession = Depends(get_db)):
-    await _get_device(device_id, db)
+    device = await _get_device(device_id, db)
+    if device.access_type == "gb28181":
+        await gb_runtime.stop_if_unused(device_id)
+        return {"ok": True}
     await zlm.del_stream_proxy(device_id)
+    return {"ok": True}
+
+
+@router.post("/{device_id}/lease")
+async def acquire_lease(device_id: int, body: GbLeaseRequest, user=Depends(get_current_user)):
+    return await gb_runtime.acquire_lease(device_id, user.id, body.lease_id)
+
+
+@router.delete("/{device_id}/lease/{lease_id}")
+async def release_lease(device_id: int, lease_id: str, user=Depends(get_current_user)):
+    await gb_runtime.release_lease(device_id, user.id, lease_id)
     return {"ok": True}
 
 
@@ -96,6 +116,9 @@ async def start_record(device_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=403, detail="设备未启用，无法开始录像")
     if not device.record_enabled:
         raise HTTPException(status_code=403, detail="此设备未启用录像，请先在设备管理中开启“启用录像”")
+    if device.access_type == "gb28181":
+        await gb_runtime.set_recording(device_id, True)
+        return {"ok": True, "recording": True}
     online = stream_key(device.id) in await zlm.online_streams()
     if not online:
         adapter = get_adapter(device.access_type)
@@ -135,7 +158,10 @@ async def start_record(device_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("/{device_id}/record/stop")
 async def stop_record(device_id: int, db: AsyncSession = Depends(get_db)):
-    await _get_device(device_id, db)
+    device = await _get_device(device_id, db)
+    if device.access_type == "gb28181":
+        await gb_runtime.set_recording(device_id, False)
+        return {"ok": True, "recording": False}
     try:
         recording_stopped = await zlm.stop_record(device_id)
     except Exception:
@@ -153,6 +179,13 @@ async def record_status(device_id: int, db: AsyncSession = Depends(get_db)):
 
 async def _capture_snapshot(device_id: int, db: AsyncSession) -> bytes:
     device = await _get_device(device_id, db)
+    if device.access_type == "gb28181":
+        lease = await gb_runtime.acquire_lease(device_id, 0, None)
+        try:
+            source = next(item["url"] for item in protocol_urls(device_id) if item["key"] == "rtsp")
+            return await zlm.get_snapshot(source)
+        finally:
+            await gb_runtime.release_lease(device_id, 0, lease["lease_id"])
     adapter = get_adapter(device.access_type)
     data: bytes | None = None
     try:

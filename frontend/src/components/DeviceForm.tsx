@@ -19,6 +19,7 @@ export default function DeviceForm({
   onSuccess,
 }: DeviceFormProps) {
   const [form] = Form.useForm<DeviceInput>();
+  const isGb = device?.access_type === 'gb28181';
 
   useEffect(() => {
     if (open) {
@@ -48,7 +49,9 @@ export default function DeviceForm({
     const values = await form.validateFields();
     try {
       if (device) {
-        await api.updateDevice(device.id, values);
+        await api.updateDevice(device.id, isGb ? {
+          name: values.name, vendor: values.vendor, enabled: values.enabled, record_enabled: values.record_enabled,
+        } : values);
       } else {
         await api.createDevice(values);
       }
@@ -82,14 +85,16 @@ export default function DeviceForm({
         </Form.Item>
         <Form.Item name="access_type" label="接入方式" rules={[{ required: true }]}>
           <Select
+            disabled={isGb}
             options={[
               { value: 'onvif', label: 'RTSP/ONVIF 标准协议' },
               { value: 'cloud', label: '厂商云 API（预留）' },
               { value: 'sdk', label: '厂商私有 SDK（预留）' },
+              ...(isGb ? [{ value: 'gb28181', label: 'GB/T 28181 国标通道' }] : []),
             ]}
           />
         </Form.Item>
-        <Form.Item name="rtsp_url" label="RTSP 地址（可选，填写则优先使用）">
+        {!isGb && <><Form.Item name="rtsp_url" label="RTSP 地址（可选，填写则优先使用）">
           <Input placeholder="rtsp://user:pass@ip:554/stream" />
         </Form.Item>
         <div style={{ display: 'flex', gap: 12 }}>
@@ -110,10 +115,10 @@ export default function DeviceForm({
           <Form.Item name="password" label="密码" style={{ flex: 1 }}>
             <Input.Password />
           </Form.Item>
-        </div>
+        </div></>}
         <div style={{ display: 'flex', gap: 32 }}>
           <Form.Item name="ptz_enabled" label="启用云台" valuePropName="checked">
-            <Switch />
+            <Switch disabled={isGb} />
           </Form.Item>
           <Form.Item
             name="record_enabled"

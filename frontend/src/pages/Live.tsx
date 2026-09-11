@@ -13,12 +13,14 @@ import { Button, Card, Empty, message, Modal, Tree } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import * as api from '../api';
 import type { Device, StreamInfo } from '../api/types';
 import PTZPanel from '../components/PTZPanel';
 import VideoPlayer from '../components/VideoPlayer';
 import { useTheme } from '../theme/ThemeProvider';
+import { useGbPlayback } from '../hooks/useGbPlayback';
 
 type LayoutType = 1 | 4 | 9 | 16;
 
@@ -36,6 +38,19 @@ export default function Live() {
   const [snapshottingDevices, setSnapshottingDevices] = useState<Record<number, boolean>>({});
   const [recordingActions, setRecordingActions] = useState<Record<number, boolean>>({});
   const videoElements = useRef<Record<number, Record<string, HTMLVideoElement>>>({});
+  const [searchParams] = useSearchParams();
+  const requestedDevice = Number(searchParams.get('device_id'));
+  const openedRequest = useRef<number | null>(null);
+  useGbPlayback(devices, [...selectedDeviceIds.slice(0, layout), selected?.id ?? null], setStreams);
+
+  useEffect(() => {
+    if (requestedDevice > 0 && openedRequest.current !== requestedDevice && devices.some((d) => d.id === requestedDevice && d.enabled)) {
+      openedRequest.current = requestedDevice;
+      setSelectedDeviceIds([requestedDevice]);
+      setSelectedTreeDeviceId(requestedDevice);
+      setSelectedWindow(0);
+    }
+  }, [devices, requestedDevice]);
 
   const registerVideoElement = useCallback(
     (deviceId: number, key: string, element: HTMLVideoElement | null) => {
@@ -62,13 +77,19 @@ export default function Live() {
       const ds = await api.listDevices();
       setDevices(ds);
       const infos = await Promise.all(
-        ds.filter((d) => d.enabled).map((d) => api.getStreamInfo(d.id).catch(() => null))
+        ds.filter((d) => d.enabled && d.access_type !== 'gb28181').map((d) => api.getStreamInfo(d.id).catch(() => null))
       );
       const map: Record<number, StreamInfo> = {};
       infos.forEach((info) => {
         if (info) map[info.device_id] = info;
       });
-      setStreams(map);
+      setStreams((previous) => {
+        const next = { ...map };
+        ds.filter((d) => d.access_type === 'gb28181').forEach((d) => {
+          if (previous[d.id]) next[d.id] = previous[d.id];
+        });
+        return next;
+      });
     } finally {
       setLoading(false);
     }
@@ -84,7 +105,7 @@ export default function Live() {
   const treeData: DataNode[] = enabledDevices.map((d) => ({
     key: d.id.toString(),
     title: d.name,
-    icon: streams[d.id]?.online ? (
+    icon: (d.access_type === 'gb28181' ? d.status === 'online' : streams[d.id]?.online) ? (
       <span style={{ color: '#52c41a' }}>●</span>
     ) : (
       <span style={{ color: '#d9d9d9' }}>●</span>
@@ -127,6 +148,7 @@ export default function Live() {
   ) => {
     // 正在录像或录制操作尚未完成时，不能删除共享的流代理。
     const device = devices.find((item) => item.id === deviceId);
+    if (device?.access_type === 'gb28181') return; // The playback hook releases only this page's lease.
     const recording = streams[deviceId]?.recording ?? device?.record_enabled ?? false;
     if (recording || recordingActions[deviceId]) return;
 
@@ -506,7 +528,7 @@ export default function Live() {
             >
               <div style={{ fontSize: 32 }}>📹</div>
               <div>{device.name}</div>
-              <div style={{ fontSize: 12 }}>设备离线</div>
+              <div style={{ fontSize: 12 }}>{device.access_type === 'gb28181' ? '正在等待国标视频连接' : '设备离线'}</div>
             </div>
           ) : (
             <div
@@ -725,7 +747,7 @@ export default function Live() {
                       color: '#999',
                     }}
                   >
-                    离线
+                    {selected.access_type === 'gb28181' ? '正在等待国标视频连接' : '离线'}
                   </div>
                 )}
               </div>

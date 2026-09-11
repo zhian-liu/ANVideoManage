@@ -103,7 +103,7 @@ export default function Devices() {
             title: '接入方式',
             dataIndex: 'access_type',
             render: (v: string) => (
-              <Tag>{v === 'onvif' ? 'RTSP/ONVIF' : v}</Tag>
+              <Tag>{v === 'onvif' ? 'RTSP/ONVIF' : v === 'gb28181' ? '国标 GB28181' : v}</Tag>
             ),
           },
           { title: 'IP', dataIndex: 'ip', render: (v: string) => v || '-' },
@@ -133,12 +133,12 @@ export default function Devices() {
             render: (_, record) => (
               <Space>
                 <a onClick={() => openEdit(record)}>编辑</a>
-                <Popconfirm
+                {record.access_type !== 'gb28181' && <Popconfirm
                   title="确定删除该设备及其录像？"
                   onConfirm={() => onDelete(record.id)}
                 >
                   <a style={{ color: '#cf1322' }}>删除</a>
-                </Popconfirm>
+                </Popconfirm>}
                 <Tooltip title="查看流地址">
                   <Button
                     type="link"

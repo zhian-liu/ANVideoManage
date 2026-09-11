@@ -9,6 +9,8 @@ release/
 logs/
 # ZLMediaKit is an external checkout; install/download it separately.
 backend/ZLMediaKit/
+native/gb28181/build/
+native/gb28181/.deps/
 
 # Node
 node_modules/

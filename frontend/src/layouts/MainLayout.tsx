@@ -8,6 +8,7 @@ import {
   VideoCameraOutlined,
   BulbOutlined,
   BulbFilled,
+  ApiOutlined,
 } from '@ant-design/icons';
 import { Avatar, Dropdown, Layout, Menu, Button, Space, Badge } from 'antd';
 import type { MenuProps } from 'antd';
@@ -24,6 +25,7 @@ const menuItems: MenuProps['items'] = [
   { key: '/live', icon: <VideoCameraOutlined />, label: '实时预览' },
   { key: '/playback', icon: <PlaySquareOutlined />, label: '录像回放' },
   { key: '/devices', icon: <DatabaseOutlined />, label: '设备管理' },
+  { key: '/gb28181', icon: <ApiOutlined />, label: '国标接入' },
   { key: '/settings', icon: <SettingOutlined />, label: '设置' },
 ];
 
@@ -168,8 +170,9 @@ export default function MainLayout() {
             {selectedKey === '/live' && '实时预览'}
             {selectedKey === '/playback' && '录像回放'}
             {selectedKey === '/devices' && '设备管理'}
+            {selectedKey === '/gb28181' && '国标接入'}
             {selectedKey === '/settings' && '设置'}
-            {!['/','/live','/playback','/devices','/settings'].includes(selectedKey) && '设备总览'}
+            {!['/','/live','/playback','/devices','/gb28181','/settings'].includes(selectedKey) && '设备总览'}
           </div>
 
           {/* 右侧工具栏 */}

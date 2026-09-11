@@ -3,11 +3,13 @@ from app.adapters.base import CameraAdapter
 from app.adapters.cloud import CloudApiAdapter
 from app.adapters.onvif import OnvifAdapter
 from app.adapters.sdk import VendorSdkAdapter
+from app.adapters.gb28181 import Gb28181Adapter
 
 _REGISTRY: dict[str, CameraAdapter] = {
     "onvif": OnvifAdapter(),
     "cloud": CloudApiAdapter(),
     "sdk": VendorSdkAdapter(),
+    "gb28181": Gb28181Adapter(),
 }
 
 

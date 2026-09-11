@@ -10,7 +10,7 @@ export interface TokenResponse {
   token_type: string;
 }
 
-export type AccessType = 'onvif' | 'cloud' | 'sdk';
+export type AccessType = 'onvif' | 'cloud' | 'sdk' | 'gb28181';
 
 export interface Device {
   id: number;
@@ -53,6 +53,67 @@ export interface StreamInfo {
   ts_url: string;
   flv_url: string;
   hls_url: string;
+}
+
+export interface GbLease extends StreamInfo {
+  lease_id: string;
+  expires_in: number;
+}
+
+export interface GbConfig {
+  enabled: boolean;
+  sip_id: string;
+  realm: string;
+  listen_ip: string;
+  advertise_ip: string;
+  sip_port: number;
+  media_ip: string;
+  media_transport: 'udp' | 'tcp-passive';
+  heartbeat_timeout: number;
+  invite_timeout: number;
+  media_timeout: number;
+  catalog_timeout: number;
+}
+
+export interface GbConfigResponse {
+  config: GbConfig;
+  service: { state: string; ready: boolean; error: string; binary_available: boolean };
+}
+
+export interface GbDeviceInput {
+  id: string;
+  name: string;
+  password: string;
+  enabled: boolean;
+}
+
+export interface GbDevice extends Omit<GbDeviceInput, 'password'> {
+  online: boolean;
+  registered_until: string | null;
+  last_heartbeat: string | null;
+  remote_ip: string;
+  remote_port: number;
+  transport: string;
+  manufacturer: string;
+  model: string;
+  catalog_state: string;
+  catalog_expected: number | null;
+  catalog_received: number;
+  last_error: string;
+}
+
+export interface GbChannel {
+  id: number;
+  channel_id: string;
+  device_id: number | null;
+  name: string;
+  manufacturer: string;
+  parent_id: string;
+  status: string;
+  present: boolean;
+  online: boolean;
+  enabled: boolean;
+  record_enabled: boolean;
 }
 
 export interface StreamProtocol {

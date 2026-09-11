@@ -5,6 +5,7 @@ import { Spin } from 'antd';
 import MainLayout from './layouts/MainLayout';
 import Dashboard from './pages/Dashboard';
 import Devices from './pages/Devices';
+import Gb28181 from './pages/Gb28181';
 import Live from './pages/Live';
 import Login from './pages/Login';
 import Playback from './pages/Playback';
@@ -47,6 +48,7 @@ export default function App() {
         <Route path="live" element={<Live />} />
         <Route path="playback" element={<Playback />} />
         <Route path="devices" element={<Devices />} />
+        <Route path="gb28181" element={<Gb28181 />} />
         <Route path="settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

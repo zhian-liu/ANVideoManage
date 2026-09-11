@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     zlm_rtsp_port: int = 554
     zlm_rtmp_port: int = 1935
 
+    # 国标内部服务由本后端单实例管理，只监听回环 HTTP。
+    gb28181_binary: str = ""
+    gb28181_http_port: int = 18081
+    gb28181_runtime_dir: str = "./data/gb28181"
+
     # 文件存储。录像为空时沿用 ZLMediaKit 的 mp4_save_path；抓拍默认保存到后端 data 目录。
     recording_path: str = ""
     snapshot_path: str = "./data/snapshots"
